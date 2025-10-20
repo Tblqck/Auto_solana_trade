@@ -1,0 +1,24 @@
+# config.yaml
+
+# Input/Output files (relative paths)
+ohlc_csv: "all_pairs_ohlc.csv"
+output_csv: "predictions.csv"
+contracts_csv: "filtered_contracts.csv"
+# Models (relative paths)
+Trade_py: "trade.py"
+classifier_model: "model_classifier.pkl"
+regressor_model: "model_regressor.pkl"
+
+# Parameters
+prob_threshold: 0.5
+
+# Feature set
+features:
+  - open
+  - high
+  - low
+  - close
+  - volume
+  - return
+  - rolling_vol
+  - rolling_mean
