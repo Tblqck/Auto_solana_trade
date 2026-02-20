@@ -1,0 +1,10 @@
+seleniumbase
+requests
+pandas
+webdriver-manager
+lightgbm
+paramiko
+scp
+base58
+solana
+solders

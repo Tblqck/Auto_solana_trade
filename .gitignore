@@ -1,0 +1,19 @@
+# Ignore environment files
+.env
+
+# Ignore keys folder completely
+keys/
+
+# Ignore helpers/db_creator.py specifically
+helpers/db_creator.py
+
+# Ignore all DB files in db_files except dex_pipeline.db
+db_files/*
+!db_files/dex_pipeline.db
+
+# Ignore downloaded_files folder completely
+downloaded_files/
+
+# Optional: ignore Python cache
+__pycache__/
+*.pyc
