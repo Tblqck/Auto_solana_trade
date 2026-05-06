@@ -1,19 +1,44 @@
-# Ignore environment files
+# Secrets & keys — never commit
 .env
-
-# Ignore keys folder completely
 keys/
 
-# Ignore helpers/db_creator.py specifically
-helpers/db_creator.py
-
-# Ignore all DB files in db_files except dex_pipeline.db
-db_files/*
-!db_files/dex_pipeline.db
-
-# Ignore downloaded_files folder completely
-downloaded_files/
-
-# Optional: ignore Python cache
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Markdown — ignore all except root README.md
+*.md
+!README.md
+
+# Databases — track the folder via .gitkeep, never the DB files
+db_files/*.db
+
+# Large data output folders
+ohlcv_output/
+ohlcv_cmc/
+archive/
+
+# Aider AI assistant files
+.aider*
+
+# Claude Code local config & memory — never commit
+.claude/
+
+# Downloaded / temp folders
+downloaded_files/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

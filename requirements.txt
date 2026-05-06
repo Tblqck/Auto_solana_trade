@@ -1,10 +1,37 @@
+# Web scraping
 seleniumbase
-requests
-pandas
 webdriver-manager
+
+# HTTP
+requests
+
+# Data
+pandas
+numpy
+
+# Machine learning
+scikit-learn
 lightgbm
+joblib
+
+# SSH / AWS sync
 paramiko
 scp
+
+# Solana
 base58
 solana
 solders
+
+# Config / env
+pyyaml
+python-dotenv
+
+# Date parsing
+python-dateutil
+
+# Telegram bot (notify/chog_bot)
+python-telegram-bot
+
+# Visualisation (simulation only)
+matplotlib

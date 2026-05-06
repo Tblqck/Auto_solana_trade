@@ -1,125 +1,153 @@
 # main.py
 import os
 import time
-import pandas as pd
+import sqlite3
 import subprocess
-import datetime
-import shutil
+import threading
+import yaml
 
-MASTER_FILE = "master_control.csv"
-STATUS_FILE = "dataloop_status.csv"
-
-# Files to back up
-CSV_FILES = [
-    "ai-thought.csv", 
-    "all_pairs_ohlc.csv",
-    "buybook.csv",
-    "fetched_pairs.csv", 
-    "filtered_contracts.csv",
-    "pending.csv",
-    "transactionbook.csv",
-    "sim_portfolio.csv",
-    "sim_token_log.csv",
-]
-
-# Files to reset (instead of backup full)
-RESET_FILES = {
-    "controller.csv": ["status", "status2"]
-}
+SOL_STARTUP_TARGET_USD = 3.00
+_SOL_SWAP_MIN_USD      = 0.10
+_SOL_MINT  = "So11111111111111111111111111111111111111112"
+_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 
-def archive_csvs():
-    """Archive CSVs into ./archive/<timestamp>/ before starting system."""
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    archive_dir = os.path.join("archive", ts)
-    os.makedirs(archive_dir, exist_ok=True)
+def _get_db_path():
+    with open("config.yaml", "r") as f:
+        config = yaml.safe_load(f)
+    return config["DB_PATH"]
 
-    # Copy & clean normal files
-    for fname in CSV_FILES:
-        if os.path.exists(fname):
+
+def ensure_db_schema():
+    """Create any missing tables without touching existing data."""
+    from core.db_schema.db_creator import init_db
+    init_db()
+    print("[Main] DB schema verified.")
+
+
+def reset_module_control():
+    db_path = _get_db_path()
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    for module in ("AI_BOT", "WATCHER", "DataLoop", "trade_engine"):
+        cur.execute("""
+            INSERT INTO module_control (module_name, status)
+            VALUES (?, 'OFF')
+            ON CONFLICT(module_name) DO UPDATE SET status='OFF'
+        """, (module,))
+    conn.commit()
+    conn.close()
+    print("[Main] Module control reset: all OFF.")
+
+
+def rebalance_sol_at_startup():
+    from wallet.wallet_state import get_sol_balance, get_token_price_usd
+    from trading.trade_engine import execute_swap
+
+    sol_balance = get_sol_balance()
+    sol_price   = get_token_price_usd("solana")
+    sol_usd     = sol_balance * sol_price
+
+    print(f"[Startup] SOL balance: {sol_balance:.6f} SOL (~${sol_usd:.2f})")
+
+    if sol_usd > SOL_STARTUP_TARGET_USD + _SOL_SWAP_MIN_USD:
+        excess_usd = sol_usd - SOL_STARTUP_TARGET_USD
+        excess_sol = excess_usd / sol_price
+        print(f"[Startup] SOL ${sol_usd:.2f} above ${SOL_STARTUP_TARGET_USD:.2f} target "
+              f"-> selling {excess_sol:.6f} SOL (${excess_usd:.2f}) back to USDC")
+        try:
+            result = execute_swap(
+                input_mint=_SOL_MINT,
+                output_mint=_USDC_MINT,
+                amount_ui=excess_sol,
+                input_decimals=9,
+                slippage_bps=50,
+            )
+            print(f"[Startup] SOL -> USDC rebalance tx: {result['signature']}")
+        except Exception as e:
+            print(f"[Startup] SOL rebalance failed (non-fatal): {e}")
+    elif sol_usd < SOL_STARTUP_TARGET_USD:
+        print(f"[Startup] SOL ${sol_usd:.2f} below ${SOL_STARTUP_TARGET_USD:.2f} "
+              f"-> per-cycle REFILL will top up on first trade")
+    else:
+        print(f"[Startup] SOL ${sol_usd:.2f} within target range, no rebalance needed")
+
+
+def start_hourly_reports(stop_event: threading.Event):
+    """Background thread: sends hourly DataLoop digest + wallet report."""
+    def _run():
+        while not stop_event.wait(timeout=3600):
             try:
-                df = pd.read_csv(fname)
-                # Keep headers only
-                header_only = df.head(0)
-                # Save backup full copy
-                shutil.copy(fname, os.path.join(archive_dir, fname))
-                # Truncate file but keep headers
-                header_only.to_csv(fname, index=False)
-                print(f"📦 Archived + cleaned {fname}")
+                from notify.reports import send_hourly_dataloop_report, send_hourly_wallet_report
+                send_hourly_dataloop_report()
+                send_hourly_wallet_report()
             except Exception as e:
-                print(f"⚠️ Failed to archive {fname}: {e}")
-
-    # Reset special files
-    for fname, headers in RESET_FILES.items():
-        df_reset = pd.DataFrame([["OFF", "OFF"]], columns=headers)
-        if os.path.exists(fname):
-            shutil.copy(fname, os.path.join(archive_dir, fname))
-        df_reset.to_csv(fname, index=False)
-        print(f"🧹 Reset {fname} to OFF,OFF")
-
-    print(f"✅ Archive completed at {archive_dir}")
+                print(f"[Notify] Hourly report error (non-fatal): {e}")
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return t
 
 
-def reset_master():
-    df = pd.DataFrame([{"AI_BOT": "OFF", "WATCHER": "OFF", "DataLoop": "OFF", "Get-pairs": "OFF"}])
-    df.to_csv(MASTER_FILE, index=False)
-    print("🔄 Master control reset: all OFF.")
-
-
-def set_master(ai="OFF", watcher="OFF", dataloop="OFF", getpairs="OFF"):
-    df = pd.DataFrame([{"AI_BOT": ai, "WATCHER": watcher, "DataLoop": dataloop, "Get-pairs": getpairs}])
-    df.to_csv(MASTER_FILE, index=False)
-    print(f"✅ Master updated: AI_BOT={ai}, WATCHER={watcher}, DataLoop={dataloop}, Get-pairs={getpairs}")
-
-
-def wait_for_dataloop_ready(timeout=300):
-    """Wait until dataloop_status.csv shows a run."""
+def wait_for_dataloop_ready(timeout=120):
+    db_path = _get_db_path()
     start = time.time()
     while time.time() - start < timeout:
-        if os.path.exists(STATUS_FILE):
-            try:
-                df = pd.read_csv(STATUS_FILE)
-                if "last_run" in df.columns and not df.empty:
-                    print("📌 DataLoop ready. Proceeding...")
-                    return True
-            except Exception:
-                pass
-        print("⏳ Waiting for DataLoop first run...")
+        try:
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT last_run FROM module_status WHERE module_name='DataLoop'"
+            )
+            row = cur.fetchone()
+            conn.close()
+            if row and row[0]:
+                print("[Main] DataLoop ready. Proceeding...")
+                return True
+        except Exception as e:
+            print(f"[Main] DB check error: {e}")
+        print("[Main] Waiting for DataLoop first run...")
         time.sleep(5)
     return False
 
 
 if __name__ == "__main__":
-    # Step 0: archive before running
-    archive_csvs()
+    from preflight import run_preflight
+    run_preflight(hard_fail=True)
 
-    reset_master()
+    ensure_db_schema()
+    reset_module_control()
+    rebalance_sol_at_startup()
 
-    # Step 1: run get-pairs once
-    set_master(getpairs="ON")
-    subprocess.run(["python", "get-pairs.py"])
-    set_master(getpairs="OFF")
+    try:
+        from notify.telegram import send as tg_send
+        tg_send("<b>sol_trade started</b>\nPreflight passed. System initialising...")
+    except Exception:
+        pass
 
-    # Step 2: start DataLoop
-    set_master(dataloop="ON")
-    dataloop_proc = subprocess.Popen(["python", "DataLoop.py"])
+    stop_reports = threading.Event()
+    start_hourly_reports(stop_reports)
+    print("[Main] Hourly report thread started.")
 
-    # Step 3: wait for DataLoop to finish 1st run
+    watcher_proc = subprocess.Popen(["python", "-m", "signals.watcher"])
+    print("[Main] Watcher started.")
+
     if not wait_for_dataloop_ready():
-        print("❌ DataLoop did not complete first run in time.")
-        dataloop_proc.terminate()
+        print("[Main] DataLoop did not complete first run in time. Aborting.")
+        watcher_proc.terminate()
+        stop_reports.set()
         exit(1)
 
-    # Step 4: launch AI Bot (with Watcher ON in master only)
-    set_master(ai="ON", watcher="ON", dataloop="ON")
-    aibot_proc = subprocess.Popen(["python", "aibot.py"])
-
-    # Step 5: let them run for 12 hours
-    print("⏳ System running for 12 hours...")
+    print("[Main] System running for 12 hours...")
     time.sleep(12 * 3600)
 
-    # Step 6: stop everything
-    print("🛑 12 hours reached. Shutting down...")
-    set_master(ai="OFF", watcher="OFF", dataloop="OFF", getpairs="OFF")
-    aibot_proc.terminate()
-    dataloop_proc.terminate()
+    print("[Main] 12 hours reached. Shutting down...")
+    watcher_proc.terminate()
+    stop_reports.set()
+
+    try:
+        from notify.telegram import send as tg_send
+        tg_send("<b>sol_trade session ended</b>\n12-hour window complete. Goodbye.")
+    except Exception:
+        pass
+
+    print("[Main] System shut down.")
