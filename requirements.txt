@@ -1,6 +1,6 @@
 # Web scraping
-seleniumbase
-webdriver-manager
+#seleniumbase
+#webdriver-manager
 
 # HTTP
 requests
