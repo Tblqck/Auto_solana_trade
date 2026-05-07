@@ -11,8 +11,11 @@ from risk.stoploss_orchestrator import run_stoploss_orch
 from risk.stoploss_tightener_orch import run_tightener
 from core.db_utils import get_db_connection2, get_db_connection
 
-FALLBACK_MINUTES = 20
+FALLBACK_MINUTES = 50
 FALLBACK_PRICE_TOLERANCE = 0.001  # 0.1%
+
+LIQUIDITY_CHECK_INTERVAL_MINUTES = 10
+MIN_LIQUIDITY_RATIO = 0.40  # sell if current liquidity < 40% of entry
 
 
 def fetch_active_trades(conn) -> set:
@@ -86,6 +89,79 @@ def _check_fallback_sells(price_map: Dict[str, float], now: datetime, existing_s
     return extra_sells
 
 
+def _check_liquidity_sells(now: datetime, existing_sells: list) -> list:
+    """
+    Return pair_ids whose liquidity has dropped below MIN_LIQUIDITY_RATIO of entry.
+    Runs at most once per LIQUIDITY_CHECK_INTERVAL_MINUTES per position.
+    """
+    extra_sells = []
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            SELECT pair_id, contract, entry_liquidity, last_liquidity_check
+            FROM live_trades
+            WHERE status = 'OPEN' AND entry_liquidity > 0
+        """)
+        rows = cur.fetchall()
+
+        for pair_id, contract, entry_liq, last_check in rows:
+            if pair_id in existing_sells:
+                continue
+
+            # Throttle: only check every LIQUIDITY_CHECK_INTERVAL_MINUTES
+            if last_check:
+                try:
+                    lc_dt = datetime.fromisoformat(last_check.replace("Z", "+00:00"))
+                    if lc_dt.tzinfo is None:
+                        lc_dt = lc_dt.replace(tzinfo=timezone.utc)
+                    if (now - lc_dt).total_seconds() / 60 < LIQUIDITY_CHECK_INTERVAL_MINUTES:
+                        continue
+                except Exception:
+                    pass
+
+            # Fetch current liquidity — prefer tokens.liquidity_raw, fall back to ai_thought
+            current_liq = None
+            cur.execute("SELECT liquidity_raw FROM tokens WHERE contract=?", (contract,))
+            liq_row = cur.fetchone()
+            if liq_row and liq_row[0] is not None:
+                current_liq = float(liq_row[0])
+            else:
+                cur.execute("""
+                    SELECT liquidity FROM ai_thought
+                    WHERE pair_id=? ORDER BY time_queued DESC LIMIT 1
+                """, (pair_id,))
+                ait = cur.fetchone()
+                if ait and ait[0]:
+                    try:
+                        current_liq = float(str(ait[0]).replace("$", "").replace(",", ""))
+                    except Exception:
+                        pass
+
+            # Stamp the check time regardless of outcome
+            cur.execute(
+                "UPDATE live_trades SET last_liquidity_check=? WHERE pair_id=?",
+                (now.isoformat(), pair_id),
+            )
+
+            if current_liq is None:
+                continue
+
+            ratio = current_liq / entry_liq if entry_liq > 0 else 1.0
+            if ratio < MIN_LIQUIDITY_RATIO:
+                print(
+                    f"[Pipeline] Liquidity SELL: {pair_id} "
+                    f"liq=${current_liq:,.0f} ({ratio*100:.0f}% of entry ${entry_liq:,.0f})"
+                )
+                extra_sells.append(pair_id)
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[Pipeline] Liquidity check failed: {e}")
+    return extra_sells
+
+
 def run_signal_pipeline() -> dict:
     now = datetime.now(timezone.utc)
     conn = get_db_connection2()
@@ -108,9 +184,13 @@ def run_signal_pipeline() -> dict:
                 if sig == "SELL":
                     sell_signals.append(pair_id)
 
-        # Step 3b — Fallback SELL for stale flat positions
+        # Step 3b — Fallback SELL for stale flat positions (50 min, 0.1% tolerance)
         fallback_sells = _check_fallback_sells(price_map, now, sell_signals)
         sell_signals.extend(fallback_sells)
+
+        # Step 3c — Liquidity watch (every 10 min per position, sell if < 40% of entry)
+        liq_sells = _check_liquidity_sells(now, sell_signals)
+        sell_signals.extend(liq_sells)
 
         remaining_active = [p for p in active_trades if p not in sell_signals]
 

@@ -8,7 +8,13 @@ def run_trades(trade_signals: list) -> tuple[list, list]:
     """
     successful, failed = execute_trades_batch(trade_signals)
 
-    successful_simple = [{"type": t["type"], "token_mint": t["token_mint"]} for t in successful]
-    failed_simple     = [{"type": t["type"], "token_mint": t["token_mint"]} for t in failed]
+    successful_simple = [
+        {"type": t["type"], "token_mint": t["token_mint"], "amount": t.get("amount", 0.0)}
+        for t in successful
+    ]
+    failed_simple = [
+        {"type": t["type"], "token_mint": t["token_mint"], "amount": t.get("amount", 0.0)}
+        for t in failed
+    ]
 
     return successful_simple, failed_simple

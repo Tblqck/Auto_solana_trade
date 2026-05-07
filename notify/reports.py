@@ -118,17 +118,31 @@ def notify_trade_entry(token_mint: str, amount_usdc: float, entry_price: float):
     send(text)
 
 
-def notify_trade_exit(token_mint: str, usdc_recovered: float, usdc_gained: float):
-    short    = token_mint[:16] + "..."
-    sign     = "+" if usdc_gained >= 0 else ""
-    outcome  = "PROFIT" if usdc_gained >= 0 else "LOSS"
-    text     = (
+def notify_trade_exit(token_mint: str, usdc_gained: float, usdc_spent: float = 0.0):
+    short   = token_mint[:16] + "..."
+    pnl     = usdc_gained - usdc_spent if usdc_spent > 0 else usdc_gained
+    sign    = "+" if pnl >= 0 else ""
+    outcome = "PROFIT" if pnl >= 0 else "LOSS"
+    spent_line = f"Spent:     ${usdc_spent:.2f} USDC\n" if usdc_spent > 0 else ""
+    text    = (
         f"<b>SELL Executed — {outcome}</b>\n\n"
         f"Token:     {short}\n"
-        f"Recovered: ${usdc_recovered:.2f} USDC\n"
-        f"P&amp;L:       {sign}${usdc_gained:.2f}"
+        f"Recovered: ${usdc_gained:.2f} USDC\n"
+        f"{spent_line}"
+        f"P&amp;L:       {sign}${pnl:.2f}"
     )
     send(text)
+
+
+def notify_sol_low(sol_usd: float):
+    text = (
+        f"<b>SOL Low — Mid-Window Refill Executed</b>\n\n"
+        f"SOL dropped to <b>${sol_usd:.2f}</b>\n"
+        f"Auto-refill to $3.00 target triggered.\n"
+        f"Cost deducted from unused trade slots."
+    )
+    send(text)
+    print(f"[Notify] Mid-window SOL refill notification sent (${sol_usd:.2f})")
 
 
 def notify_recycled_slot(amount_usdc: float):

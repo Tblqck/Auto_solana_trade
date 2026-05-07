@@ -72,7 +72,11 @@ def get_dynamic_allocation(hours: int = DEFAULT_SLOT_HOURS) -> float:
         print("[ALLOCATION] Zero USDC.")
         return 0.0
 
-    sol_usd            = get_sol_balance() * get_token_price_usd("solana")
+    try:
+        sol_usd = get_sol_balance() * get_token_price_usd("solana")
+    except Exception as e:
+        print(f"[ALLOCATION] SOL price fetch failed ({e}) — assuming $0, full reserve applied")
+        sol_usd = 0.0
     sol_reserve_buffer = max(0.0, SOL_RESERVE_USD - sol_usd)
     if sol_reserve_buffer > 0:
         print(f"[ALLOCATION] SOL low (${sol_usd:.2f}) — reserving ${sol_reserve_buffer:.2f} USDC for gas")
@@ -183,6 +187,50 @@ def claim_recycled_slot() -> float:
 
     print(f"[ALLOCATION] Recycled slot {oldest['slot_id']} claimed -> ${amount:.4f}")
     return amount
+
+
+def deduct_refill_from_slots(refill_usdc: float):
+    """
+    Deduct a mid-window gas refill cost from unused planned slots.
+    Unused = planned slots beyond the count of currently open live trades
+    (oldest slots are assumed tied to active positions, newest are free).
+    """
+    if refill_usdc <= 0:
+        return
+    now = datetime.now(timezone.utc)
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+
+        cur.execute("SELECT COUNT(*) FROM live_trades WHERE status='OPEN'")
+        live_count = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT id, allocation_usd FROM allocation_slots
+            WHERE slot_type=? AND stop_timestamp > ?
+            ORDER BY start_timestamp ASC
+        """, (PLANNED, now.isoformat()))
+        all_planned = cur.fetchall()
+
+        # Skip the slots committed to live trades (oldest first)
+        unused = all_planned[live_count:]
+        if not unused:
+            print(f"[ALLOCATION] No unused slots to deduct refill ${refill_usdc:.4f} from")
+            conn.close()
+            return
+
+        deduct_each = refill_usdc / len(unused)
+        for slot_id, alloc in unused:
+            new_alloc = max(0.0, alloc - deduct_each)
+            cur.execute("UPDATE allocation_slots SET allocation_usd=? WHERE id=?",
+                        (new_alloc, slot_id))
+
+        conn.commit()
+        conn.close()
+        print(f"[ALLOCATION] Deducted ${refill_usdc:.4f} refill cost across "
+              f"{len(unused)} unused slot(s) (${deduct_each:.4f} each)")
+    except Exception as e:
+        print(f"[ALLOCATION] Refill deduction failed: {e}")
 
 
 if __name__ == "__main__":

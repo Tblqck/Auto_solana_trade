@@ -82,6 +82,13 @@ def execute_trades_batch(trade_signals: list) -> tuple[list, list]:
     approved_buys = _preflight(wallet, buy_signals, has_refill=bool(refill_signals))
     dropped_buys  = [s for s in buy_signals if s not in approved_buys]
 
+    # Preflight-dropped BUYs: return any recycled capital immediately
+    for s in dropped_buys:
+        recycled = s.get("_recycled_amount", 0.0)
+        if recycled >= 1.0:
+            print(f"[Trade] PREFLIGHT drop — returning recycled ${recycled:.4f} to pool")
+            register_recycled_slot(recycled)
+
     # Execution order: REFILL (gas) -> SELL (free capital) -> BUY
     ordered_signals = refill_signals + sell_signals + approved_buys
 
@@ -155,7 +162,22 @@ def execute_trades_batch(trade_signals: list) -> tuple[list, list]:
                         register_recycled_slot(usdc_gained)
                     try:
                         from notify.reports import notify_trade_exit
-                        notify_trade_exit(signal["token_mint"], usdc_after, usdc_gained)
+                        from core.db_utils import get_db_connection as _get_conn
+                        usdc_spent = 0.0
+                        try:
+                            _c = _get_conn()
+                            _cur = _c.cursor()
+                            _cur.execute(
+                                "SELECT usdc_spent FROM live_trades WHERE contract=?",
+                                (signal["token_mint"],),
+                            )
+                            _row = _cur.fetchone()
+                            if _row and _row[0]:
+                                usdc_spent = float(_row[0])
+                            _c.close()
+                        except Exception:
+                            pass
+                        notify_trade_exit(signal["token_mint"], usdc_gained, usdc_spent)
                     except Exception:
                         pass
                     for t in wallet.get("tokens", []):
@@ -169,6 +191,11 @@ def execute_trades_batch(trade_signals: list) -> tuple[list, list]:
                     new_sol = get_sol_balance()
                     wallet["sol_balance"] = new_sol
                     print(f"[Trade] REFILL confirmed — SOL now {new_sol:.6f}")
+                    try:
+                        from wallet.allocation_manager import deduct_refill_from_slots
+                        deduct_refill_from_slots(signal.get("amount", 0.0))
+                    except Exception:
+                        pass
 
                 apply_shadow_fill(wallet, signal)
                 trade_done = True
@@ -185,6 +212,12 @@ def execute_trades_batch(trade_signals: list) -> tuple[list, list]:
         else:
             print(f"[Trade] Giving up: {signal['type']} {signal['token_mint'][:12]}…")
             failed_trades.append(original_signal)
+            # Return recycled capital to pool so the slot isn't lost
+            if sig_type == "BUY":
+                recycled = original_signal.get("_recycled_amount", 0.0)
+                if recycled >= 1.0:
+                    print(f"[Trade] Failed BUY — returning recycled ${recycled:.4f} to pool")
+                    register_recycled_slot(recycled)
 
         time.sleep(TRADE_INTERVAL)
 

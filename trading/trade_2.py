@@ -3,45 +3,9 @@ from datetime import datetime, timezone, timedelta
 
 from core.db_utils import get_db_connection
 from wallet.allocation_manager import get_dynamic_allocation, claim_recycled_slot
-from wallet.wallet_state import get_sol_balance, get_token_price_usd, get_token_balance
 
 MAX_SIGNAL_AGE_SECONDS = 60
 MIN_TRADE_USDC         = 1.0
-
-USDC_MINT      = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-SOL_MINT       = "So11111111111111111111111111111111111111112"
-SOL_RESERVE_USD = 2.0   # floor — trigger refill below this
-SOL_TARGET_USD  = 3.5   # top-up target — buffer so we don't refill every cycle
-
-
-def _sol_refill_signal() -> dict | None:
-    """
-    Check on-chain SOL value. If below SOL_RESERVE_USD, return a REFILL signal
-    that will swap enough USDC to bring SOL up to SOL_TARGET_USD.
-    Returns None if SOL is fine or there isn't enough USDC to bother.
-    """
-    sol_usd = get_sol_balance() * get_token_price_usd("solana")
-    if sol_usd >= SOL_RESERVE_USD:
-        return None
-
-    usdc_needed  = SOL_TARGET_USD - sol_usd
-    usdc_token   = get_token_balance(USDC_MINT)
-    usdc_avail   = usdc_token["amount"] if usdc_token else 0.0
-    # Keep at least $0.50 USDC liquid after the refill
-    usdc_to_swap = min(usdc_needed, max(0.0, usdc_avail - 0.50))
-
-    if usdc_to_swap < MIN_TRADE_USDC:
-        print(f"[Trade] REFILL: SOL low (${sol_usd:.2f}) but not enough USDC "
-              f"(${usdc_avail:.2f}) to refill — skipping")
-        return None
-
-    print(f"[Trade] REFILL triggered: SOL ${sol_usd:.2f} < ${SOL_RESERVE_USD:.2f} "
-          f"-> swapping ${usdc_to_swap:.4f} USDC for SOL (target ${SOL_TARGET_USD:.2f})")
-    return {
-        "type":       "REFILL",
-        "token_mint": SOL_MINT,
-        "amount":     round(usdc_to_swap, 4),
-    }
 
 
 def fetch_pending_trades():
@@ -84,9 +48,6 @@ def build_trade_signals() -> tuple[list, dict]:
     Both are built from the same DB fetch to avoid a double-query race window."""
     purge_stale_pending()
 
-    # SOL refill has highest priority — must fire before any other trade
-    refill = _sol_refill_signal()
-
     pending      = fetch_pending_trades()
     # Build the map here so trade.py doesn't need a second fetch
     pending_map  = {contract: trade_id for trade_id, contract, _, _ in pending}
@@ -119,13 +80,14 @@ def build_trade_signals() -> tuple[list, dict]:
 
             print(f"[Trade] BUY {contract[:8]}... via {source} slot -> ${amount:.4f}")
             buy_signals.append({
-                "type":       "BUY",
-                "token_mint": contract,
-                "amount":     float(amount),
+                "type":            "BUY",
+                "token_mint":      contract,
+                "amount":          float(amount),
+                "_recycled_amount": float(amount) if source == "recycled" else 0.0,
             })
 
-    # REFILL first (gas), then SELLs (free capital), then BUYs
-    signals = ([refill] if refill else []) + sell_signals + buy_signals
+    # SELLs first (free capital), then BUYs
+    signals = sell_signals + buy_signals
     return signals, pending_map
 
 

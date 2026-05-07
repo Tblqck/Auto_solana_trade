@@ -29,7 +29,7 @@ def reset_module_control():
     db_path = _get_db_path()
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
-    for module in ("AI_BOT", "WATCHER", "DataLoop", "trade_engine"):
+    for module in ("AI_BOT", "WATCHER", "DataLoop", "trade_engine", "sol_refill_done"):
         cur.execute("""
             INSERT INTO module_control (module_name, status)
             VALUES (?, 'OFF')
@@ -38,6 +38,19 @@ def reset_module_control():
     conn.commit()
     conn.close()
     print("[Main] Module control reset: all OFF.")
+
+
+def _mark_sol_refill_done():
+    db_path = _get_db_path()
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO module_control (module_name, status)
+        VALUES ('sol_refill_done', 'ON')
+        ON CONFLICT(module_name) DO UPDATE SET status='ON'
+    """)
+    conn.commit()
+    conn.close()
 
 
 def rebalance_sol_at_startup():
@@ -66,11 +79,28 @@ def rebalance_sol_at_startup():
             print(f"[Startup] SOL -> USDC rebalance tx: {result['signature']}")
         except Exception as e:
             print(f"[Startup] SOL rebalance failed (non-fatal): {e}")
+
     elif sol_usd < SOL_STARTUP_TARGET_USD:
+        needed_usd = SOL_STARTUP_TARGET_USD - sol_usd
         print(f"[Startup] SOL ${sol_usd:.2f} below ${SOL_STARTUP_TARGET_USD:.2f} "
-              f"-> per-cycle REFILL will top up on first trade")
+              f"-> buying ${needed_usd:.2f} of SOL (one-time startup refill)")
+        try:
+            result = execute_swap(
+                input_mint=_USDC_MINT,
+                output_mint=_SOL_MINT,
+                amount_ui=needed_usd,
+                input_decimals=6,
+                slippage_bps=50,
+            )
+            print(f"[Startup] USDC -> SOL refill tx: {result['signature']}")
+        except Exception as e:
+            print(f"[Startup] SOL refill failed (non-fatal): {e}")
+
     else:
         print(f"[Startup] SOL ${sol_usd:.2f} within target range, no rebalance needed")
+
+    # Mark startup refill as done — prevents mid-window auto-refill
+    _mark_sol_refill_done()
 
 
 def start_hourly_reports(stop_event: threading.Event):

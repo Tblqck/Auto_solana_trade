@@ -6,6 +6,26 @@ from trading.trade_executor import run_trades
 from trading.trade_2 import build_trade_signals
 
 
+def _migrate_live_trades():
+    """Add new columns to live_trades if they don't exist (idempotent)."""
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    for col, typedef in [
+        ("usdc_spent",           "REAL DEFAULT 0"),
+        ("entry_liquidity",      "REAL DEFAULT 0"),
+        ("last_liquidity_check", "TEXT"),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE live_trades ADD COLUMN {col} {typedef}")
+            conn.commit()
+        except Exception:
+            pass
+    conn.close()
+
+
+_migrate_live_trades()
+
+
 def acquire_lock():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -44,7 +64,7 @@ def remove_pending(ids):
     conn.close()
 
 
-def insert_live_trade(contract):
+def insert_live_trade(contract, usdc_spent: float = 0.0):
     """Insert a confirmed BUY into live_trades. Updates trade_risk_state with actual execution price."""
     conn = get_db_connection()
     cur = conn.cursor()
@@ -75,12 +95,20 @@ def insert_live_trade(contract):
         fb = cur.fetchone()
         entry_price = fb[0] if fb and fb[0] else 0.0
 
+    # Capture liquidity at entry from tokens table
+    entry_liquidity = 0.0
+    cur.execute("SELECT liquidity_raw FROM tokens WHERE contract=?", (contract,))
+    liq_row = cur.fetchone()
+    if liq_row and liq_row[0]:
+        entry_liquidity = float(liq_row[0])
+
     cur.execute("""
         INSERT OR REPLACE INTO live_trades (
             pair_id, contract, entry_price, entry_time,
-            status, decision, peak_price, trailing_active, last_update
-        ) VALUES (?, ?, ?, ?, 'OPEN', 1, ?, 0, ?)
-    """, (pair_id, contract, entry_price, now, entry_price, now))
+            status, decision, peak_price, trailing_active, last_update,
+            usdc_spent, entry_liquidity
+        ) VALUES (?, ?, ?, ?, 'OPEN', 1, ?, 0, ?, ?, ?)
+    """, (pair_id, contract, entry_price, now, entry_price, now, usdc_spent, entry_liquidity))
     conn.commit()
     conn.close()
 
@@ -121,7 +149,7 @@ def run_trade_engine():
 
         for s in successful_signals:
             if s["type"] == "BUY":
-                insert_live_trade(s["token_mint"])
+                insert_live_trade(s["token_mint"], usdc_spent=s.get("amount", 0.0))
                 try:
                     from notify.reports import notify_trade_entry
                     conn2 = get_db_connection()

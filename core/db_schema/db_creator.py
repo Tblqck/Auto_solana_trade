@@ -152,7 +152,10 @@ def init_db():
             trailing_active INTEGER,
             last_update TIMESTAMP,
             source TEXT,
-            notes TEXT
+            notes TEXT,
+            usdc_spent REAL DEFAULT 0,
+            entry_liquidity REAL DEFAULT 0,
+            last_liquidity_check TEXT
         )
     """)
 
