@@ -158,6 +158,10 @@ if __name__ == "__main__":
     start_hourly_reports(stop_reports)
     print("[Main] Hourly report thread started.")
 
+    from notify.commands import start_command_listener
+    start_command_listener()
+    print("[Main] Telegram command listener started.")
+
     watcher_proc = subprocess.Popen(["python", "-m", "signals.watcher"])
     print("[Main] Watcher started.")
 
