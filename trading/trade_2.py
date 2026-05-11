@@ -11,12 +11,21 @@ MIN_TRADE_USDC         = 1.0
 def fetch_pending_trades():
     conn = get_db_connection()
     cur  = conn.cursor()
-    cur.execute("""
-        SELECT id, contract, decision, time_queued
-        FROM pending_trades
-        ORDER BY id ASC
-        LIMIT 100
-    """)
+    # reason column added at runtime — fall back gracefully if missing
+    try:
+        cur.execute("""
+            SELECT id, contract, decision, time_queued, reason
+            FROM pending_trades
+            ORDER BY id ASC
+            LIMIT 100
+        """)
+    except Exception:
+        cur.execute("""
+            SELECT id, contract, decision, time_queued, NULL
+            FROM pending_trades
+            ORDER BY id ASC
+            LIMIT 100
+        """)
     rows = cur.fetchall()
     conn.close()
     return rows
@@ -50,16 +59,16 @@ def build_trade_signals() -> tuple[list, dict]:
 
     pending      = fetch_pending_trades()
     # Build the map here so trade.py doesn't need a second fetch
-    pending_map  = {contract: trade_id for trade_id, contract, _, _ in pending}
+    pending_map  = {contract: trade_id for trade_id, contract, _, _, _ in pending}
 
     sell_signals = []
     buy_signals  = []
 
-    for _trade_id, contract, decision, _ in pending:
+    for _trade_id, contract, decision, _, reason in pending:
         decision = int(decision)
 
         if decision == 0:  # SELL
-            sell_signals.append({"type": "SELL", "token_mint": contract})
+            sell_signals.append({"type": "SELL", "token_mint": contract, "_reason": reason or "SIGNAL"})
             continue
 
         if decision == 1:  # BUY

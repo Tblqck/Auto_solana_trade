@@ -10,7 +10,7 @@ classifier_model: "models/model_classifier.pkl"
 regressor_model: "models/model_regressor.pkl"
 
 # Parameters
-prob_threshold: 0.5
+prob_threshold: 0.62
 
 # Feature set (must stay in sync with ai/ohlc_predictor.prepare_features
 #              and models/train_models.py FEATURES list)

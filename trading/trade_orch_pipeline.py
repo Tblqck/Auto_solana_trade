@@ -110,8 +110,9 @@ def execute_trades_batch(trade_signals: list) -> tuple[list, list]:
         is_sell    = sig_type == "SELL"
         is_refill  = sig_type == "REFILL"
 
+        reason_tag = f" [{signal['_reason']}]" if signal.get("_reason") else ""
         print(f"[Trade] {idx}/{len(ordered_signals)} "
-              f"{sig_type} {signal['token_mint'][:12]}...")
+              f"{sig_type}{reason_tag} {signal['token_mint'][:12]}...")
 
         # Snapshot USDC before SELL to calculate delta afterwards
         usdc_before_sell = _wallet_usdc(wallet) if is_sell else 0.0
@@ -156,8 +157,9 @@ def execute_trades_batch(trade_signals: list) -> tuple[list, list]:
                 if is_sell:
                     usdc_after  = _refresh_usdc()
                     usdc_gained = usdc_after - usdc_before_sell
-                    print(f"[Trade] SELL recovered ${usdc_after:.4f} USDC "
-                          f"(gained ${usdc_gained:+.4f})")
+                    exit_reason = signal.get("_reason", "SIGNAL")
+                    print(f"[Trade] SELL confirmed — reason={exit_reason} "
+                          f"recovered=${usdc_after:.4f} USDC (gained ${usdc_gained:+.4f})")
                     if usdc_gained > 0:
                         register_recycled_slot(usdc_gained)
                     try:
@@ -177,7 +179,7 @@ def execute_trades_batch(trade_signals: list) -> tuple[list, list]:
                             _c.close()
                         except Exception:
                             pass
-                        notify_trade_exit(signal["token_mint"], usdc_gained, usdc_spent)
+                        notify_trade_exit(signal["token_mint"], usdc_gained, usdc_spent, exit_reason)
                     except Exception:
                         pass
                     for t in wallet.get("tokens", []):

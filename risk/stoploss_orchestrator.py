@@ -6,9 +6,9 @@ from risk.stoploss_core import compute_stoploss
 
 get_db_connection = get_db_connection2
 
-BASE_HARD_STOP = 0.10
+BASE_HARD_STOP = 0.07
 BASE_TRAIL_START = 0.10
-BASE_TRAIL_DISTANCE = 0.10
+BASE_TRAIL_DISTANCE = 0.07
 
 
 def run_stoploss_orch(contract_list, price_map):
@@ -69,7 +69,9 @@ def run_stoploss_orch(contract_list, price_map):
                 pair_id
             ))
 
-            signals[pair_id] = "SELL" if result["decision"] == "SELL" else "SAFE"
+            decision = result["decision"]
+            reason   = result.get("trigger_type") or "SAFE"
+            signals[pair_id] = {"decision": decision, "reason": reason}
 
         else:
             # New token — seed trade_risk_state with signal-time entry price
@@ -89,7 +91,7 @@ def run_stoploss_orch(contract_list, price_map):
                 stop_price, "SAFE", None, now
             ))
 
-            signals[pair_id] = "SAFE"
+            signals[pair_id] = {"decision": "SAFE", "reason": "SAFE"}
 
     conn.commit()
     conn.close()

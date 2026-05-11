@@ -21,6 +21,9 @@ env/
 # Databases — track the folder via .gitkeep, never the DB files
 db_files/*.db
 
+# Documentation folder — internal notes, not for version control
+docs/
+
 # Large data output folders
 ohlcv_output/
 ohlcv_cmc/

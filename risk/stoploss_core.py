@@ -1,6 +1,14 @@
 # stoploss_core.py
 from typing import Dict, Optional
 
+# At high profit, trail tightens to give back less of the run before exit.
+# Applied in order (highest threshold first) — first match wins.
+TRAIL_DISTANCE_TIERS = [
+    (2.00, 0.05),  # +200%+ profit → trail 5% below peak
+    (1.00, 0.06),  # +100%+ profit → trail 6% below peak
+]
+# Below +100% the base trail_distance_pct (0.07) from the orchestrator applies.
+
 
 def compute_stoploss(
     *,
@@ -37,7 +45,13 @@ def compute_stoploss(
     # 4️⃣ Activate trailing only after enough profit
     profit_pct = (current_price - entry_price) / entry_price
     if profit_pct >= trail_start_pct:
-        trailing_stop = peak_price * (1 - trail_distance_pct)
+        # Tighten trail distance at high profit levels to preserve more of the run
+        effective_trail = trail_distance_pct
+        for min_profit, tighter_dist in TRAIL_DISTANCE_TIERS:
+            if profit_pct >= min_profit:
+                effective_trail = tighter_dist
+                break
+        trailing_stop = peak_price * (1 - effective_trail)
         new_stop = max(new_stop, trailing_stop)
 
     # 5️⃣ Decide

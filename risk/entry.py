@@ -7,7 +7,7 @@ import pandas as pd
 from core.db_utils import get_db_connection2
 from risk.LossGuard import run_loss_guard
 
-INTERVAL = 3600  # 1 hour
+INTERVAL = 1800  # 30 minutes
 
 
 # ------------------------------------------------------------

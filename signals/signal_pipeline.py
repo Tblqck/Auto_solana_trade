@@ -177,15 +177,20 @@ def run_signal_pipeline() -> dict:
         sell_signals = []
         price_map: Dict[str, float] = {}
 
+        sell_reasons: Dict[str, str] = {}
+
         if active_trades:
             price_map = fetch_latest_prices(conn, list(active_trades))
             sl_check = run_stoploss_orch(list(active_trades), price_map)
-            for pair_id, sig in sl_check.items():
-                if sig == "SELL":
+            for pair_id, result in sl_check.items():
+                if result["decision"] == "SELL":
                     sell_signals.append(pair_id)
+                    sell_reasons[pair_id] = result["reason"]
 
         # Step 3b — Fallback SELL for stale flat positions (50 min, 0.1% tolerance)
         fallback_sells = _check_fallback_sells(price_map, now, sell_signals)
+        for pair_id in fallback_sells:
+            sell_reasons[pair_id] = "FALLBACK_FLAT"
         sell_signals.extend(fallback_sells)
 
         # Step 3c — Liquidity watch (every 10 min per position, sell if < 40% of entry)
@@ -205,16 +210,17 @@ def run_signal_pipeline() -> dict:
             # Seed trade_risk_state with signal-time entry price for new BUY candidates
             run_stoploss_orch(fresh_tokens, fresh_prices)
 
-        # Step 5 — Tighten stops on held positions that LossGuard also approved
-        flipped_candidates = [p for p in remaining_active if p in new_safe]
+        # Step 5 — Tighten stops on ALL held positions regardless of LossGuard result.
+        # Profit protection must not be gated on whether LossGuard approved new buys.
         tightened = {}
-        if flipped_candidates:
-            tightened = run_tightener(flipped_candidates)
+        if remaining_active:
+            tightened = run_tightener(list(remaining_active))
 
         return {
             "timestamp": now,
             "new_safe": fresh_tokens,
             "sell": sell_signals,
+            "sell_reasons": sell_reasons,
             "tightened": tightened,
         }
 

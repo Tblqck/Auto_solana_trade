@@ -25,7 +25,7 @@ def run_tightener(pair_ids: list[str]) -> dict[str, float]:
         # Fetch current trade info
         cur.execute(
             """
-            SELECT entry_price, current_price, stop_price
+            SELECT entry_price, current_price, peak_price, stop_price
             FROM trade_risk_state
             WHERE pair_id = ?
             """,
@@ -35,12 +35,13 @@ def run_tightener(pair_ids: list[str]) -> dict[str, float]:
         if not row:
             continue
 
-        entry_price, current_price, stop_price = row
+        entry_price, current_price, peak_price, stop_price = row
 
         # Compute tightened stop-loss
         new_stop = compute_tightened_stoploss(
             entry_price=entry_price,
             current_price=current_price,
+            peak_price=peak_price,
             stop_price=stop_price
         )
 
