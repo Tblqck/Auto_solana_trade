@@ -80,7 +80,14 @@ def _fetch_token_accounts_for_program(program_id: str) -> list[dict]:
             decimals = int(info["tokenAmount"]["decimals"])
             ui_amount = amount / (10 ** decimals)
             if ui_amount > 0:
-                tokens.append({"mint": info["mint"], "amount": ui_amount, "decimals": decimals})
+                tokens.append({
+                    "mint": info["mint"],
+                    "amount": ui_amount,
+                    "amount_raw": amount,
+                    "decimals": decimals,
+                    "pubkey": acc.get("pubkey"),
+                    "program_id": program_id,
+                })
         except (KeyError, TypeError, ValueError):
             continue
     return tokens

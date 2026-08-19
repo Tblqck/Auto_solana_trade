@@ -67,8 +67,9 @@ def handle_signal(signal: dict, wallet_snapshot: dict) -> dict:
         decimals = token["decimals"]
         register_token(token_mint, decimals)
 
-        # Subtract 1 raw unit to avoid rounding overflow on-chain
-        amount_raw = int(token["amount"] * (10 ** decimals)) - 1
+        # Exact on-chain raw balance (no float round-trip) — sells the true
+        # full balance so the account empties out and its rent can be reclaimed.
+        amount_raw = token["amount_raw"]
         if amount_raw <= 0:
             raise RuntimeError(f"[Trade] SELL amount too small for {token_mint}")
         amount_ui = amount_raw / (10 ** decimals)

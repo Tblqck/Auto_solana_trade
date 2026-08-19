@@ -187,6 +187,13 @@ def execute_trades_batch(trade_signals: list) -> tuple[list, list]:
                             t["amount"] = usdc_after
                             break
 
+                    # Reclaim the ~0.002 SOL rent locked in the now-empty token account
+                    try:
+                        from trading.dust_sweep import close_token_account
+                        close_token_account(signal["token_mint"])
+                    except Exception as e:
+                        print(f"[Trade] Account close skipped: {e}")
+
                 # After REFILL: update in-memory SOL balance so fee calc stays accurate
                 if is_refill:
                     from wallet.wallet_state import get_sol_balance

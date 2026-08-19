@@ -3,7 +3,10 @@ import os
 import base58
 from dotenv import load_dotenv
 from solders.keypair import Keypair
-from solders.transaction import VersionedTransaction
+from solders.transaction import Transaction, VersionedTransaction
+from solders.hash import Hash
+from solders.instruction import Instruction
+from solders.pubkey import Pubkey
 
 load_dotenv()
 
@@ -29,3 +32,13 @@ def sign_transaction(tx: VersionedTransaction) -> VersionedTransaction:
     Correct Solders signing for Jupiter v0 transactions
     """
     return VersionedTransaction(tx.message, [_KEYPAIR])
+
+
+def sign_legacy_transaction(
+    instructions: list[Instruction], payer: Pubkey, recent_blockhash: Hash
+) -> Transaction:
+    """Build + sign a legacy Transaction from raw instructions (non-Jupiter flows,
+    e.g. SPL Token CloseAccount)."""
+    return Transaction.new_signed_with_payer(
+        instructions, payer, [_KEYPAIR], recent_blockhash
+    )
