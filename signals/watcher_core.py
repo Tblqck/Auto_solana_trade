@@ -3,6 +3,7 @@ import subprocess
 
 from core.db_utils import get_db_connection2
 from risk.entry_spark import check_entry_spark
+from risk.circuit_breaker import is_buy_halted
 
 get_db_connection = get_db_connection2
 TRADE_ENGINE_MODULE = "trade_engine"
@@ -110,26 +111,31 @@ def run_watcher_signal_based():
     live_contracts = fetch_live_trades()
     pending_actions = fetch_pending_actions()
 
-    spark_conn = get_db_connection()
-    try:
-        for pair_id in new_safe:
-            contract = get_contract_for_pair(pair_id)
-            if not contract:
-                print(f"[Watcher] No contract for pair {pair_id} — skipping BUY")
-                continue
-            if contract in live_contracts:
-                continue
-            if (contract, 1) in pending_actions:
-                continue
-            if not check_entry_spark(pair_id, spark_conn):
-                print(f"[Watcher] BUY held — no momentum spark: {pair_id}")
-                continue
-            if not check_reg_pred_positive(pair_id, spark_conn):
-                continue
-            queue_trade(contract, 1)
-            print(f"[Watcher] BUY queued: {contract} (pair: {pair_id})")
-    finally:
-        spark_conn.close()
+    buy_halted = is_buy_halted()
+    if buy_halted and new_safe:
+        print(f"[Watcher] Circuit breaker HALTED — skipping {len(new_safe)} BUY candidate(s)")
+
+    if not buy_halted:
+        spark_conn = get_db_connection()
+        try:
+            for pair_id in new_safe:
+                contract = get_contract_for_pair(pair_id)
+                if not contract:
+                    print(f"[Watcher] No contract for pair {pair_id} — skipping BUY")
+                    continue
+                if contract in live_contracts:
+                    continue
+                if (contract, 1) in pending_actions:
+                    continue
+                if not check_entry_spark(pair_id, spark_conn):
+                    print(f"[Watcher] BUY held — no momentum spark: {pair_id}")
+                    continue
+                if not check_reg_pred_positive(pair_id, spark_conn):
+                    continue
+                queue_trade(contract, 1)
+                print(f"[Watcher] BUY queued: {contract} (pair: {pair_id})")
+        finally:
+            spark_conn.close()
 
     for pair_id in sell:
         contract = get_contract_for_pair(pair_id)

@@ -7,7 +7,7 @@ Fully automated Solana DEX trading bot. Scrapes token pairs and OHLC data, runs 
 ## System Architecture
 
 ```
-main.py (12-hour session orchestrator)
+main.py (runs indefinitely; no session time limit)
    │
    ├─ data/get_pairs.py          ← one-shot pair scrape
    ├─ data/Data_Loop.py          ← background OHLC agent (daemon thread)
@@ -70,7 +70,7 @@ scripts       ← dev tools, not in pipeline
 | `core/` | Shared foundation — DB connections, config, schema |
 | `data/` | DEX pair scraper + OHLC ingestion |
 | `ai/` | ML signal generation (classifier + regressor) |
-| `risk/` | LossGuard, hard-stop, trailing-stop, tightener |
+| `risk/` | LossGuard, hard-stop, trailing-stop, tightener, engine-wide circuit breaker |
 | `signals/` | Signal pipeline orchestrator + watcher daemon |
 | `trading/` | Jupiter swap execution, signer, trade tracker |
 | `wallet/` | On-chain balance queries, USDC allocation slots |
@@ -114,6 +114,7 @@ Schema is auto-created at startup via `core/db_schema/db_creator.py`.
 | `loss_guard_log` | LossGuard scan history |
 | `module_control` | ON/OFF flags per subsystem |
 | `module_status` | Last-run timestamps per module |
+| `circuit_breaker_state` | Engine-wide loss circuit breaker: trailing peak wallet USD + halted flag |
 
 ---
 
@@ -129,9 +130,30 @@ cp .env.example .env
 # Run preflight checks
 python preflight.py
 
-# Launch (12-hour session)
+# Launch (runs indefinitely — 24/7)
 python main.py
 ```
+
+---
+
+## Engine-Wide Circuit Breaker
+
+Unlike per-position risk (LossGuard, stoploss orchestrator/tightener — see `risk/`), the
+circuit breaker (`risk/circuit_breaker.py`) watches total wallet USD value against a
+trailing high-water mark. If current value drops **15%** below the peak seen since the
+last resume, new BUY entries are halted engine-wide — existing open positions keep being
+managed normally by the stoploss orchestrator so they close naturally rather than being
+force-sold into a dip.
+
+Checked every 5 minutes by a background thread started in `main.py`. Resume manually once
+you've reviewed what happened:
+
+```bash
+python cli.py resume
+```
+
+or send `/resume` in Telegram. `python cli.py state` / `/state` show whether the breaker
+is currently halted.
 
 ---
 

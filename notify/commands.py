@@ -5,6 +5,7 @@ Telegram command listener (long-polling).
 Handles:
     /liquidate  — sells all token positions via liquidate_all()
     /state      — returns a formatted wallet state summary
+    /resume     — clears the circuit breaker halt and resumes BUYs
 """
 
 import io
@@ -49,10 +50,33 @@ def _handle_liquidate() -> str:
         return f"<b>Liquidate — ERROR</b>\n\n{e}"
 
 
+def _handle_resume() -> str:
+    try:
+        from wallet.wallet_state import get_wallet_state
+        from risk.circuit_breaker import get_status, resume_trading
+
+        status = get_status()
+        if not status["halted"]:
+            return "<b>Resume</b>\n\nCircuit breaker is not halted — nothing to resume."
+
+        total_usd = get_wallet_state().get("total_usd", 0.0)
+        resume_trading(total_usd)
+        return (
+            "<b>Resume — Done</b>\n\n"
+            f"Was halted: {status['tripped_reason']}\n"
+            f"New peak baseline: ${total_usd:.2f}\n"
+            "BUYs re-enabled."
+        )
+    except Exception as e:
+        return f"<b>Resume — ERROR</b>\n\n{e}"
+
+
 def _handle_state() -> str:
     try:
         from wallet.wallet_state import get_wallet_state
+        from risk.circuit_breaker import get_status
         w = get_wallet_state()
+        breaker = get_status()
 
         sol_bal = w.get("sol_balance", 0.0)
         sol_usd = w.get("sol_usd", 0.0)
@@ -62,8 +86,11 @@ def _handle_state() -> str:
         usdc   = next((t["amount"] for t in tokens if t["mint"] == USDC_MINT), 0.0)
         others = [t for t in tokens if t["mint"] != USDC_MINT]
 
-        lines = [
-            "<b>Wallet State</b>\n",
+        lines = ["<b>Wallet State</b>\n"]
+        if breaker["halted"]:
+            lines.append(f"⛔ CIRCUIT BREAKER HALTED: {breaker['tripped_reason']}")
+            lines.append("Send /resume to re-enable BUYs.\n")
+        lines += [
             f"SOL:   {sol_bal:.4f} SOL  (~${sol_usd:.2f})",
             f"USDC:  ${usdc:.2f}",
             f"Total: ${total:.2f}",
@@ -89,6 +116,7 @@ def _handle_state() -> str:
 _COMMANDS = {
     "/liquidate": _handle_liquidate,
     "/state":     _handle_state,
+    "/resume":    _handle_resume,
 }
 
 

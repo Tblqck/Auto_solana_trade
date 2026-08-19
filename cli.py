@@ -4,6 +4,7 @@ sol_trade command pipeline
 Usage:
   python cli.py liquidate    — sell every open position immediately
   python cli.py state        — show wallet balances + open positions
+  python cli.py resume       — clear the circuit breaker halt and resume BUYs
 """
 import sys
 
@@ -40,9 +41,11 @@ def cmd_liquidate():
 def cmd_state():
     from core.db_utils import get_db_connection
     from wallet.wallet_state import get_wallet_state
+    from risk.circuit_breaker import get_status
 
     print("\n[CLI] Fetching on-chain wallet state...\n")
     wallet = get_wallet_state()
+    breaker = get_status()
 
     usdc_balance = next(
         (t["amount"] for t in wallet.get("tokens", [])
@@ -53,6 +56,11 @@ def cmd_state():
     print("=" * 52)
     print("  WALLET STATE")
     print("=" * 52)
+    if breaker["halted"]:
+        print(f"  CIRCUIT BREAKER: HALTED — {breaker['tripped_reason']}")
+        print(f"  (run 'python cli.py resume' or /resume to re-enable BUYs)")
+    else:
+        print(f"  Circuit breaker : OK  (peak ${breaker['peak_usd']:.2f})")
     print(f"  SOL balance : {wallet.get('sol_balance', 0):.6f} SOL"
           f"  (${wallet.get('sol_usd', 0):.2f})")
     print(f"  USDC balance: ${usdc_balance:.4f}")
@@ -111,6 +119,21 @@ def cmd_state():
         print()
 
 
+def cmd_resume():
+    from wallet.wallet_state import get_wallet_state
+    from risk.circuit_breaker import get_status, resume_trading
+
+    status = get_status()
+    if not status["halted"]:
+        print("[CLI] Circuit breaker is not halted — nothing to resume.")
+        return
+
+    print(f"[CLI] Breaker was tripped: {status['tripped_reason']}")
+    total_usd = get_wallet_state().get("total_usd", 0.0)
+    resume_trading(total_usd)
+    print(f"[CLI] Resumed. New peak baseline: ${total_usd:.2f}")
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -122,6 +145,8 @@ def main():
         cmd_liquidate()
     elif cmd == "state":
         cmd_state()
+    elif cmd == "resume":
+        cmd_resume()
     else:
         print(f"[CLI] Unknown command: {sys.argv[1]}")
         print(__doc__)

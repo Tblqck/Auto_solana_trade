@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 _BOT_TOKEN = os.getenv("Trade_crpyt", "")
-_CHAT_ID   = "7416057134"
+_CHAT_ID   = os.getenv("OWNER_CHAT_ID", "7416057134")  # sole owner/admin — receives all alerts, only sender whose commands are processed
 
 
 def send(text: str) -> bool:

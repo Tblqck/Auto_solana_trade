@@ -259,6 +259,19 @@ def init_db():
         )
     """)
 
+    # -----------------------
+    # Engine-wide loss circuit breaker (single row, id=1)
+    # -----------------------
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS circuit_breaker_state (
+            id              INTEGER PRIMARY KEY CHECK (id = 1),
+            peak_usd        REAL NOT NULL,
+            halted          INTEGER NOT NULL DEFAULT 0,
+            tripped_at      TIMESTAMP,
+            tripped_reason  TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
     print(f"[DB] Initialized successfully at {DB_PATH}")

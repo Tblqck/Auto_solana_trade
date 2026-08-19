@@ -118,6 +118,23 @@ def start_hourly_reports(stop_event: threading.Event):
     return t
 
 
+def start_circuit_breaker_monitor(stop_event: threading.Event, interval_seconds: int = 300):
+    """Background thread: tracks wallet high-water mark, trips the breaker on
+    a 15% drawdown from peak. See risk/circuit_breaker.py."""
+    def _run():
+        while not stop_event.wait(timeout=interval_seconds):
+            try:
+                from wallet.wallet_state import get_wallet_state
+                from risk.circuit_breaker import check_and_update
+                total_usd = get_wallet_state().get("total_usd", 0.0)
+                check_and_update(total_usd)
+            except Exception as e:
+                print(f"[CircuitBreaker] Check error (non-fatal): {e}")
+    t = threading.Thread(target=_run, daemon=True, name="circuit-breaker")
+    t.start()
+    return t
+
+
 def wait_for_dataloop_ready(timeout=120):
     db_path = _get_db_path()
     start = time.time()
@@ -158,6 +175,9 @@ if __name__ == "__main__":
     start_hourly_reports(stop_reports)
     print("[Main] Hourly report thread started.")
 
+    start_circuit_breaker_monitor(stop_reports)
+    print("[Main] Circuit breaker monitor started.")
+
     from notify.commands import start_command_listener
     start_command_listener()
     print("[Main] Telegram command listener started.")
@@ -171,16 +191,20 @@ if __name__ == "__main__":
         stop_reports.set()
         exit(1)
 
-    print("[Main] System running for 12 hours...")
-    time.sleep(12 * 3600)
-
-    print("[Main] 12 hours reached. Shutting down...")
-    watcher_proc.terminate()
-    stop_reports.set()
+    print("[Main] System running indefinitely (no session time limit).")
+    try:
+        watcher_proc.wait()
+        print(f"[Main] Watcher exited unexpectedly (code {watcher_proc.returncode}).")
+    except KeyboardInterrupt:
+        print("[Main] Interrupted by user.")
+    finally:
+        if watcher_proc.poll() is None:
+            watcher_proc.terminate()
+        stop_reports.set()
 
     try:
         from notify.telegram import send as tg_send
-        tg_send("<b>sol_trade session ended</b>\n12-hour window complete. Goodbye.")
+        tg_send("<b>sol_trade stopped</b>\nWatcher process exited. System shutting down.")
     except Exception:
         pass
 
