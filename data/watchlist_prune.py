@@ -25,7 +25,13 @@ def find_prune_candidates(conn) -> list[str]:
     cur.execute("SELECT DISTINCT pair_id FROM live_trades WHERE status = 'OPEN'")
     held_pairs = {row[0] for row in cur.fetchall()}
 
-    cur.execute("SELECT contract, pair_id, liquidity_raw FROM supported_tokens")
+    # supported_tokens only stores a human-formatted liquidity string
+    # ("$100K") -- join tokens for the numeric liquidity_raw.
+    cur.execute("""
+        SELECT st.contract, st.pair_id, t.liquidity_raw
+        FROM supported_tokens st
+        LEFT JOIN tokens t ON t.contract = st.contract
+    """)
     all_supported = cur.fetchall()
 
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=STALE_HOURS)).isoformat()
