@@ -38,22 +38,28 @@ def human_format(num):
     return f"${num:.0f}"
 
 
-def fetch_trending_pools(pages: int = PAGES_PER_RUN) -> list[dict]:
+def fetch_trending_pools(pages: int = PAGES_PER_RUN, retries: int = 3, retry_wait: int = 10) -> list[dict]:
     pools = []
     for page in range(1, pages + 1):
-        try:
-            resp = requests.get(GECKO_TRENDING_URL, params={"page": page}, timeout=15)
-            if resp.status_code != 200:
-                print(f"[GetPairs] Trending page {page}: HTTP {resp.status_code}")
+        for attempt in range(retries):
+            try:
+                resp = requests.get(GECKO_TRENDING_URL, params={"page": page}, timeout=15)
+                if resp.status_code == 429:
+                    print(f"[GetPairs] Rate limited on page {page}, retrying in {retry_wait}s")
+                    time.sleep(retry_wait)
+                    continue
+                if resp.status_code != 200:
+                    print(f"[GetPairs] Trending page {page}: HTTP {resp.status_code}")
+                    return pools
+                data = resp.json().get("data", [])
+                if not data:
+                    return pools
+                pools.extend(data)
                 break
-            data = resp.json().get("data", [])
-            if not data:
-                break
-            pools.extend(data)
-            time.sleep(0.5)
-        except Exception as e:
-            print(f"[GetPairs] Trending fetch failed (page {page}): {e}")
-            break
+            except Exception as e:
+                print(f"[GetPairs] Trending fetch failed (page {page}): {e}")
+                time.sleep(retry_wait)
+        time.sleep(0.5)
     return pools
 
 
@@ -128,12 +134,18 @@ def filter_supported_by_jupiter_db() -> int:
 
     for i in range(0, len(contracts), batch_size):
         batch = contracts[i:i + batch_size]
-        try:
-            resp = requests.get(JUPITER_PRICE_URL, params={"ids": ",".join(batch)}, timeout=8)
-            if resp.status_code == 200:
-                supported_set.update(resp.json().keys())
-        except Exception as e:
-            print(f"[GetPairs] Jupiter check failed (batch {i}): {e}")
+        for attempt in range(3):
+            try:
+                resp = requests.get(JUPITER_PRICE_URL, params={"ids": ",".join(batch)}, timeout=8)
+                if resp.status_code == 429:
+                    time.sleep(5)
+                    continue
+                if resp.status_code == 200:
+                    supported_set.update(resp.json().keys())
+                break
+            except Exception as e:
+                print(f"[GetPairs] Jupiter check failed (batch {i}): {e}")
+                break
         time.sleep(0.2)
 
     inserted = 0
