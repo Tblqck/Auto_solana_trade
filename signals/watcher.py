@@ -67,6 +67,33 @@ def start_dataloop_background(interval_seconds=60, quiet=True):
     print(f"[Watcher] DataLoop background thread started (every {interval_seconds}s, quiet={quiet})")
 
 
+def start_pair_discovery_background(interval_seconds=7200, quiet=True):
+    """Run new-token discovery (data/get_pairs.py) continuously in its own
+    background daemon thread. Metadata-only writes (tokens/supported_tokens)
+    — never touches trade_risk_state/live_trades, so it can't disrupt open
+    positions or a currently-running signal/trade cycle."""
+    def _loop():
+        while True:
+            try:
+                from data.get_pairs import run_all as run_discovery
+                if quiet:
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        stats = run_discovery()
+                else:
+                    print("[Discovery] Run triggered")
+                    stats = run_discovery()
+                if stats:
+                    print(f"[Discovery] {stats.get('candidates', 0)} candidates, "
+                          f"{stats.get('supported', 0)} tradable on Jupiter")
+            except Exception as e:
+                print(f"[Discovery] Background error: {e}")
+            time.sleep(interval_seconds)
+
+    thread = threading.Thread(target=_loop, daemon=True, name="pair-discovery")
+    thread.start()
+    print(f"[Watcher] Pair discovery background thread started (every {interval_seconds}s)")
+
+
 def _check_sol_balance():
     """
     Check SOL USD value every SOL_CHECK_INTERVAL_S seconds.
@@ -130,6 +157,7 @@ def watcher(interval=30):
     print("[Watcher] Started")
     set_module_status(WATCHER_NAME, "ON")
     start_dataloop_background(interval_seconds=60, quiet=True)
+    start_pair_discovery_background(interval_seconds=7200, quiet=True)
 
     _REPORT_INTERVAL = 3600  # 1 hour
     last_report_ts   = time.time()

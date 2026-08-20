@@ -9,7 +9,7 @@ Fully automated Solana DEX trading bot. Scrapes token pairs and OHLC data, runs 
 ```
 main.py (runs indefinitely; no session time limit)
    │
-   ├─ data/get_pairs.py          ← one-shot pair scrape
+   ├─ data/get_pairs.py          ← new-token discovery (background thread, every 2h)
    ├─ data/Data_Loop.py          ← background OHLC agent (daemon thread)
    └─ ai/aibot.py                ← AI bot (launches watcher internally)
           │

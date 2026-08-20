@@ -1,59 +1,29 @@
-import os
+# data/get_pairs.py
+"""
+Discovers new tradable Solana tokens.
+
+Replaces the old Selenium/DexScreener-scrape approach (its deps —
+selenium/seleniumbase — aren't even installed anymore) with GeckoTerminal's
+trending-pools API: same provider Data_Loop_core already uses for OHLC, so
+the pool address format matches pair_id exactly, no translation needed.
+
+Writes are metadata-only (tokens, supported_tokens via INSERT OR REPLACE) —
+never touches trade_risk_state/live_trades, so it can't disturb open
+positions or a currently-running signal/trade cycle. Safe to call repeatedly;
+already-known contracts are just re-upserted, not duplicated.
+"""
 import time
-import datetime
+
 import requests
-import pandas as pd
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from seleniumbase import Driver
+
 from core.db_utils import get_db_connection
 
-# -------------------------
-# Utility Functions
-# -----------------------'--
+MIN_FDV_USD        = 140_000
+MIN_LIQUIDITY_USD  = 100_000
+PAGES_PER_RUN       = 3   # ~20 pools/page
+GECKO_TRENDING_URL  = "https://api.geckoterminal.com/api/v2/networks/solana/trending_pools"
+JUPITER_PRICE_URL   = "https://lite-api.jup.ag/price/v3"
 
-def processDataRaw(data):
-    clean_data = [x for x in data if x not in ['V1', 'V2', 'V3']]
-    rows, current_row = [], []
-    for item in clean_data:
-        if item.startswith("#") and current_row:
-            rows.append(current_row)
-            current_row = []
-        current_row.append(item)
-    if current_row:
-        rows.append(current_row)
-    return pd.DataFrame(rows)
-
-def rearrange_df(df):
-    df = df.drop(index=0).reset_index(drop=True)
-    for idx, row in df.iterrows():
-        try:
-            col4 = str(row[4]) if 4 in row else ""
-            col6 = str(row[6]) if 6 in row else ""
-            if col4 != "SOL":
-                df.at[idx, 5] = col4
-        except Exception as e:
-            print(f"Error processing row {idx}: {e}")
-    return pd.DataFrame({"Column5": df[5]})
-
-def scrapeDex():
-    url = "https://dexscreener.com/solana/5m?rankBy=trendingScoreM5&order=desc"
-    driver = Driver(uc=True, headless=True)
-    rearranged_df = None
-    try:
-        driver.get(url)
-        data_element = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CLASS_NAME, 'ds-dex-table'))
-        )
-        if data_element:
-            data = data_element.text.split('\n')
-            original_df = processDataRaw(data)
-            rearranged_df = rearrange_df(original_df)
-    except Exception as e:
-        print(f"Exception during scraping: {e}")
-    driver.quit()
-    return rearranged_df
 
 def human_format(num):
     if num is None:
@@ -65,143 +35,143 @@ def human_format(num):
         return f"${num/1e6:.1f}M"
     elif num >= 1e3:
         return f"${num/1e3:.0f}K"
-    else:
-        return f"${num:.0f}"
+    return f"${num:.0f}"
 
-def get_best_pair(token_name, min_mcap=140_000, min_liquidity=100_000):
-    try:
-        url = f"https://api.dexscreener.com/latest/dex/search?q={token_name}"
-        resp = requests.get(url, timeout=10).json()
-        if "pairs" not in resp or len(resp["pairs"]) == 0:
-            return None
 
-        valid_pairs = []
-        for pair in resp["pairs"]:
-            try:
-                mcap = pair.get("marketCap", 0) or 0
-                liquidity = pair.get("liquidity", {}).get("usd", 0) or 0
-                fdv = pair.get("fdv", 0) or 0
-                if mcap >= min_mcap and liquidity >= min_liquidity:
-                    valid_pairs.append({
-                        "Token": pair["baseToken"]["name"],
-                        "Symbol": pair["baseToken"]["symbol"],
-                        "Contract": pair["baseToken"]["address"],
-                        "pair_id": pair.get("pairAddress"),  # <-- lowercase + underscore
-                        "Price": f"${float(pair.get('priceUsd', 0)):.6f}",
-                        "MarketCap_raw": mcap,
-                        "Liquidity_raw": liquidity,
-                        "FDV_raw": fdv,
-                        "MarketCap": human_format(mcap),
-                        "Liquidity": human_format(liquidity),
-                        "FDV": human_format(fdv),
-                    })
-            except Exception as e:
-                print(f"Error parsing pair for {token_name}: {e}")
+def fetch_trending_pools(pages: int = PAGES_PER_RUN) -> list[dict]:
+    pools = []
+    for page in range(1, pages + 1):
+        try:
+            resp = requests.get(GECKO_TRENDING_URL, params={"page": page}, timeout=15)
+            if resp.status_code != 200:
+                print(f"[GetPairs] Trending page {page}: HTTP {resp.status_code}")
+                break
+            data = resp.json().get("data", [])
+            if not data:
+                break
+            pools.extend(data)
+            time.sleep(0.5)
+        except Exception as e:
+            print(f"[GetPairs] Trending fetch failed (page {page}): {e}")
+            break
+    return pools
 
-        if not valid_pairs:
-            return None
-        best_pair = max(valid_pairs, key=lambda x: (x["MarketCap_raw"], x["Liquidity_raw"]))
-        return best_pair
-    except Exception as e:
-        print(f"Error fetching pairs for {token_name}: {e}")
-        return None
 
-def add_contracts_to_db(rearranged_df):
-    results = []
+def filter_candidates(pools: list[dict]) -> list[dict]:
+    candidates = []
+    for pool in pools:
+        try:
+            attrs = pool["attributes"]
+            fdv = float(attrs.get("fdv_usd") or 0)
+            liquidity = float(attrs.get("reserve_in_usd") or 0)
+            if fdv < MIN_FDV_USD or liquidity < MIN_LIQUIDITY_USD:
+                continue
+
+            base_token_id = pool["relationships"]["base_token"]["data"]["id"]
+            contract = base_token_id.split("_", 1)[1] if "_" in base_token_id else base_token_id
+            pair_id = attrs.get("address") or pool["id"].split("_", 1)[-1]
+            name = attrs.get("name", "")
+            symbol = name.split("/")[0].strip() if "/" in name else name
+
+            candidates.append({
+                "Token": name,
+                "Symbol": symbol,
+                "Contract": contract,
+                "pair_id": pair_id,
+                "Price": f"${float(attrs.get('base_token_price_usd') or 0):.8f}",
+                "MarketCap_raw": fdv,
+                "Liquidity_raw": liquidity,
+                "FDV_raw": fdv,
+                "MarketCap": human_format(fdv),
+                "Liquidity": human_format(liquidity),
+                "FDV": human_format(fdv),
+            })
+        except Exception as e:
+            print(f"[GetPairs] Skipping malformed pool entry: {e}")
+    return candidates
+
+
+def add_contracts_to_db(candidates: list[dict]) -> int:
+    if not candidates:
+        return 0
     conn = get_db_connection()
+    conn.execute("PRAGMA busy_timeout = 5000")
     cur = conn.cursor()
-    for token in rearranged_df["Column5"]:
-        best_pair = get_best_pair(token)
-        if best_pair:
-            results.append(best_pair)
-            # Insert or replace into DB
-            cur.execute("""
-                INSERT OR REPLACE INTO tokens
-                (token, symbol, contract, pair_id, price, marketcap_raw, liquidity_raw, fdv_raw, marketcap, liquidity, fdv)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                best_pair["Token"], best_pair["Symbol"], best_pair["Contract"], best_pair["pair_id"],
-                best_pair["Price"], best_pair["MarketCap_raw"], best_pair["Liquidity_raw"], best_pair["FDV_raw"],
-                best_pair["MarketCap"], best_pair["Liquidity"], best_pair["FDV"]
-            ))
-        time.sleep(0.5)
+    for c in candidates:
+        cur.execute("""
+            INSERT OR REPLACE INTO tokens
+            (token, symbol, contract, pair_id, price, marketcap_raw, liquidity_raw, fdv_raw, marketcap, liquidity, fdv)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            c["Token"], c["Symbol"], c["Contract"], c["pair_id"], c["Price"],
+            c["MarketCap_raw"], c["Liquidity_raw"], c["FDV_raw"],
+            c["MarketCap"], c["Liquidity"], c["FDV"],
+        ))
     conn.commit()
     conn.close()
-    return results
+    return len(candidates)
 
-def filter_supported_by_jupiter_db():
+
+def filter_supported_by_jupiter_db() -> int:
+    """Cross-check every known `tokens` row against Jupiter's price API;
+    upsert the tradable subset into supported_tokens."""
     conn = get_db_connection()
+    conn.execute("PRAGMA busy_timeout = 5000")
     cur = conn.cursor()
     cur.execute("SELECT * FROM tokens")
     rows = cur.fetchall()
-    df = pd.DataFrame(rows, columns=[col[0] for col in cur.description])
+    cols = [c[0] for c in cur.description]
 
-    supported = []
-    contracts = df["contract"].dropna().unique().tolist()
+    contracts = list({row[cols.index("contract")] for row in rows if row[cols.index("contract")]})
+    supported_set = set()
     batch_size = 50
-    lite_url = "https://lite-api.jup.ag/price/v3"
-    main_url = "https://api.jup.ag/price/v2"
 
     for i in range(0, len(contracts), batch_size):
-        batch = contracts[i:i+batch_size]
-        ids = ",".join(batch)
+        batch = contracts[i:i + batch_size]
         try:
-            resp = requests.get(lite_url, params={"ids": ids}, timeout=6)
+            resp = requests.get(JUPITER_PRICE_URL, params={"ids": ",".join(batch)}, timeout=8)
             if resp.status_code == 200:
-                supported.extend(resp.json().keys())
-                continue
+                supported_set.update(resp.json().keys())
         except Exception as e:
-            print(f"⚠️ Jupiter lite API error (batch {i}): {e}")
-        try:
-            resp = requests.get(main_url, params={"ids": ids}, timeout=6)
-            if resp.status_code == 200:
-                data = resp.json()
-                if isinstance(data, dict):
-                    supported.extend(data.keys())
-                elif isinstance(data, list):
-                    for d in data:
-                        if "id" in d:
-                            supported.append(d["id"])
-        except Exception as e:
-            print(f"⚠️ Jupiter main API error (batch {i}): {e}")
+            print(f"[GetPairs] Jupiter check failed (batch {i}): {e}")
+        time.sleep(0.2)
 
-    supported_set = set(supported)
-    filtered_df = df[df["contract"].isin(supported_set)]
-
-    for _, row in filtered_df.iterrows():
+    inserted = 0
+    for row in rows:
+        row_d = dict(zip(cols, row))
+        if row_d["contract"] not in supported_set:
+            continue
         cur.execute("""
             INSERT OR REPLACE INTO supported_tokens
             (contract, token, symbol, pair_id, price, marketcap, liquidity, fdv)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            row["contract"], row["token"], row["symbol"], row["pair_id"],
-            row["price"], row["marketcap"], row["liquidity"], row["fdv"]
+            row_d["contract"], row_d["token"], row_d["symbol"], row_d["pair_id"],
+            row_d["price"], row_d["marketcap"], row_d["liquidity"], row_d["fdv"],
         ))
+        inserted += 1
     conn.commit()
     conn.close()
-    return filtered_df
+    return inserted
 
-# -------------------------
-# Master Runner
-# -------------------------
 
-def main():
-    print("🔎 Scraping trending tokens from Dexscreener...")
-    rearranged_df = scrapeDex()
-    if rearranged_df is None or rearranged_df.empty:
-        print("❌ No tokens scraped.")
-        return
+def run_all() -> dict:
+    """Full discovery pass: fetch trending pools -> quality filter ->
+    upsert tokens -> cross-check Jupiter tradability -> upsert supported_tokens."""
+    print("[GetPairs] Fetching trending pools from GeckoTerminal...")
+    pools = fetch_trending_pools()
+    print(f"[GetPairs] {len(pools)} pools fetched")
 
-    print("🔎 Adding best pairs to DB...")
-    add_contracts_to_db(rearranged_df)
+    candidates = filter_candidates(pools)
+    print(f"[GetPairs] {len(candidates)} pass quality filters "
+          f"(fdv>=${MIN_FDV_USD:,}, liq>=${MIN_LIQUIDITY_USD:,})")
 
-    print("🔎 Filtering tokens supported by Jupiter...")
-    filtered_df = filter_supported_by_jupiter_db()
-    print(f"✅ {len(filtered_df)} tokens supported by Jupiter")
+    add_contracts_to_db(candidates)
+    supported = filter_supported_by_jupiter_db()
+    print(f"[GetPairs] {supported} tokens confirmed tradable on Jupiter")
 
-def run_all():
-    """Alias for running the full Dex scraping + DB update pipeline."""
-    main()
+    return {"candidates": len(candidates), "supported": supported}
+
 
 if __name__ == "__main__":
     run_all()
