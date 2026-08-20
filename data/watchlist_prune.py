@@ -6,8 +6,10 @@ live_trades. Only deletes from supported_tokens -- tokens and ohlc_data
 history are left alone, since that history stays valuable for model
 retraining even after a token drops off the active watchlist.
 
-"Stale" = no fresh OHLC candle in STALE_HOURS (Data_Loop_core stopped
-finding data for it -- delisted, drained, or dead).
+"Stale" = it HAD OHLC data but nothing fresh in STALE_HOURS (Data_Loop_core
+stopped finding data for it -- delisted, drained, or dead). A token with NO
+data yet is left alone -- that just means DataLoop hasn't reached it in its
+rotation yet, not that it's stale.
 "Illiquid" = current liquidity_raw has decayed below MIN_LIQUIDITY_USD
 since it was discovered.
 """
@@ -43,7 +45,9 @@ def find_prune_candidates(conn) -> list[str]:
 
         cur.execute("SELECT MAX(time) FROM ohlc_data WHERE pair_id = ?", (pair_id,))
         last_candle = cur.fetchone()[0]
-        is_stale = (last_candle is None) or (str(last_candle) < cutoff)
+        # No data yet just means DataLoop hasn't reached it in its rotation
+        # yet (freshly discovered) -- that's not staleness, leave it alone.
+        is_stale = (last_candle is not None) and (str(last_candle) < cutoff)
 
         try:
             is_illiquid = liquidity_raw is not None and float(liquidity_raw) < MIN_LIQUIDITY_USD
