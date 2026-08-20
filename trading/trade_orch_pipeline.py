@@ -180,6 +180,9 @@ def execute_trades_batch(trade_signals: list) -> tuple[list, list]:
                         except Exception:
                             pass
                         notify_trade_exit(signal["token_mint"], usdc_gained, usdc_spent, exit_reason)
+
+                        from notify.reports import log_trade_pnl
+                        log_trade_pnl(signal["token_mint"], usdc_spent, usdc_gained, exit_reason)
                     except Exception:
                         pass
                     for t in wallet.get("tokens", []):

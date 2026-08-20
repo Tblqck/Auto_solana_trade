@@ -25,6 +25,25 @@ def ensure_db_schema():
     print("[Main] DB schema verified.")
 
 
+def set_session_baseline():
+    """Snapshot wallet value at true startup for /pnl's 'since we started' math."""
+    from wallet.wallet_state import get_wallet_state
+    from datetime import datetime, timezone
+
+    total_usd = get_wallet_state().get("total_usd", 0.0)
+    db_path = _get_db_path()
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO session_baseline (id, started_at, start_usd)
+        VALUES (1, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET started_at=excluded.started_at, start_usd=excluded.start_usd
+    """, (datetime.now(timezone.utc).isoformat(), total_usd))
+    conn.commit()
+    conn.close()
+    print(f"[Main] Session baseline set: ${total_usd:.2f}")
+
+
 def reset_module_control():
     db_path = _get_db_path()
     conn = sqlite3.connect(db_path)
@@ -164,6 +183,7 @@ if __name__ == "__main__":
     ensure_db_schema()
     reset_module_control()
     rebalance_sol_at_startup()
+    set_session_baseline()
 
     try:
         from notify.telegram import send as tg_send
@@ -178,9 +198,11 @@ if __name__ == "__main__":
     start_circuit_breaker_monitor(stop_reports)
     print("[Main] Circuit breaker monitor started.")
 
-    from notify.commands import start_command_listener
-    start_command_listener()
-    print("[Main] Telegram command listener started.")
+    # Telegram command listener now runs in scripts/telegram_supervisor.py —
+    # a separate always-on process, so /startengine still works even when
+    # main.py itself is fully down. Don't start a second listener here; two
+    # processes long-polling the same bot's getUpdates would steal each
+    # other's updates.
 
     watcher_proc = subprocess.Popen(["python", "-m", "signals.watcher"])
     print("[Main] Watcher started.")

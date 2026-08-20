@@ -118,20 +118,45 @@ def notify_trade_entry(token_mint: str, amount_usdc: float, entry_price: float):
     send(text)
 
 
-def notify_trade_exit(token_mint: str, usdc_gained: float, usdc_spent: float = 0.0):
+def notify_trade_exit(token_mint: str, usdc_gained: float, usdc_spent: float = 0.0, exit_reason: str = None):
     short   = token_mint[:16] + "..."
     pnl     = usdc_gained - usdc_spent if usdc_spent > 0 else usdc_gained
     sign    = "+" if pnl >= 0 else ""
     outcome = "PROFIT" if pnl >= 0 else "LOSS"
-    spent_line = f"Spent:     ${usdc_spent:.2f} USDC\n" if usdc_spent > 0 else ""
+    spent_line  = f"Spent:     ${usdc_spent:.2f} USDC\n" if usdc_spent > 0 else ""
+    reason_line = f"Reason:    {exit_reason}\n" if exit_reason else ""
     text    = (
         f"<b>SELL Executed — {outcome}</b>\n\n"
         f"Token:     {short}\n"
         f"Recovered: ${usdc_gained:.2f} USDC\n"
         f"{spent_line}"
+        f"{reason_line}"
         f"P&amp;L:       {sign}${pnl:.2f}"
     )
     send(text)
+
+
+def log_trade_pnl(contract: str, usdc_spent: float, usdc_gained: float, exit_reason: str = None):
+    """Persist realized P&L for a confirmed SELL to trade_pnl_log — powers /pnl's
+    'which token contributed to growth' breakdown. Best-effort, never raises."""
+    try:
+        from core.db_utils import get_db_connection
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT symbol FROM supported_tokens WHERE contract=?", (contract,))
+        row = cur.fetchone()
+        symbol = row[0] if row and row[0] else None
+        cur.execute("""
+            INSERT INTO trade_pnl_log (contract, symbol, usdc_spent, usdc_gained, realized_pnl, exit_reason, closed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            contract, symbol, usdc_spent, usdc_gained, usdc_gained - usdc_spent,
+            exit_reason, datetime.now(timezone.utc).isoformat(),
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[Notify] log_trade_pnl failed (non-fatal): {e}")
 
 
 def notify_sol_low(sol_usd: float):

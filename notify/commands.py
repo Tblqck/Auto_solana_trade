@@ -1,22 +1,38 @@
 """
 notify/commands.py
 
-Telegram command listener (long-polling).
+Telegram command listener (long-polling). Runs as the sole listener inside
+scripts/telegram_supervisor.py — an always-on process separate from
+main.py, so /startengine still works even when the trading engine itself
+is fully stopped. (main.py used to run its own listener; don't add that
+back — two processes long-polling the same bot's getUpdates steal each
+other's updates.)
+
 Handles:
-    /liquidate  — sells all token positions via liquidate_all()
-    /state      — returns a formatted wallet state summary
-    /resume     — clears the circuit breaker halt and resumes BUYs
+    /help        — this list
+    /state       — wallet balances + open positions
+    /pnl         — P&L since session start + top contributing tokens
+    /liquidate   — sells all token positions via liquidate_all()
+    /resume      — clears the circuit breaker halt and resumes BUYs
+    /startengine — launches main.py if it isn't running
+    /shutdown    — gracefully stops main.py if it is running
 """
 
 import io
+import os
+import signal
+import subprocess
 import time
 import threading
 import contextlib
+from pathlib import Path
+
 import requests
 
 from notify.telegram import _BOT_TOKEN, _CHAT_ID, send
 
 USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+_PROJECT_DIR = Path(__file__).resolve().parents[1]
 
 
 def _get_updates(offset: int) -> list[dict]:
@@ -111,12 +127,125 @@ def _handle_state() -> str:
         return f"<b>Wallet State — ERROR</b>\n\n{e}"
 
 
+def _handle_pnl() -> str:
+    try:
+        from wallet.wallet_state import get_wallet_state
+        from core.db_utils import get_db_connection
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT started_at, start_usd FROM session_baseline WHERE id=1")
+        row = cur.fetchone()
+
+        current_total = get_wallet_state().get("total_usd", 0.0)
+
+        lines = ["<b>Session P&amp;L</b>\n"]
+        started_at = None
+        if row:
+            started_at, start_usd = row
+            delta = current_total - start_usd
+            pct = (delta / start_usd * 100) if start_usd > 0 else 0.0
+            sign = "+" if delta >= 0 else ""
+            lines.append(f"Started: {started_at[:16].replace('T', ' ')} UTC")
+            lines.append(f"Start:   ${start_usd:.2f}")
+            lines.append(f"Now:     ${current_total:.2f}")
+            lines.append(f"P&amp;L:     {sign}${delta:.2f}  ({sign}{pct:.2f}%)")
+        else:
+            lines.append("No session baseline recorded yet — engine hasn't completed a startup.")
+
+        top = []
+        if started_at:
+            cur.execute("""
+                SELECT COALESCE(symbol, contract) AS label, SUM(realized_pnl) AS total_pnl, COUNT(*) AS trades
+                FROM trade_pnl_log
+                WHERE closed_at >= ?
+                GROUP BY contract
+                ORDER BY total_pnl DESC
+                LIMIT 5
+            """, (started_at,))
+            top = cur.fetchall()
+        conn.close()
+
+        if top:
+            lines.append("\n<b>Top contributors this session</b>")
+            for label, total_pnl, trades in top:
+                sign2 = "+" if total_pnl >= 0 else ""
+                lines.append(f"  {label}: {sign2}${total_pnl:.2f} ({trades} trade{'s' if trades != 1 else ''})")
+        else:
+            lines.append("\nNo closed trades yet this session.")
+
+        return "\n".join(lines)
+    except Exception as e:
+        return f"<b>P&amp;L — ERROR</b>\n\n{e}"
+
+
+def _find_main_pid() -> int | None:
+    """ps-based lookup (not pgrep — not guaranteed installed) for a running
+    `python main.py` process."""
+    try:
+        out = subprocess.check_output(["ps", "-eo", "pid,args"]).decode()
+        for line in out.splitlines():
+            if "python main.py" in line and "grep" not in line:
+                return int(line.strip().split()[0])
+    except Exception:
+        pass
+    return None
+
+
+def _handle_startengine() -> str:
+    pid = _find_main_pid()
+    if pid:
+        return f"<b>Start Engine</b>\n\nAlready running (pid {pid})."
+    try:
+        log_dir = _PROJECT_DIR / "logs"
+        log_dir.mkdir(exist_ok=True)
+        log_file = open(log_dir / "engine.log", "a")
+        proc = subprocess.Popen(
+            ["python", "main.py"],
+            cwd=str(_PROJECT_DIR),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        return f"<b>Start Engine — Done</b>\n\nLaunched (pid {proc.pid}). Logs: logs/engine.log"
+    except Exception as e:
+        return f"<b>Start Engine — ERROR</b>\n\n{e}"
+
+
+def _handle_shutdown() -> str:
+    pid = _find_main_pid()
+    if not pid:
+        return "<b>Shutdown</b>\n\nEngine is not running."
+    try:
+        os.kill(pid, signal.SIGINT)
+        return f"<b>Shutdown</b>\n\nSent graceful stop signal to engine (pid {pid}). It will finish its shutdown shortly."
+    except Exception as e:
+        return f"<b>Shutdown — ERROR</b>\n\n{e}"
+
+
+def _handle_help() -> str:
+    return (
+        "<b>sol_trade — Commands</b>\n\n"
+        "/state — wallet balances + open positions\n"
+        "/pnl — P&amp;L since session start + top contributing tokens\n"
+        "/liquidate — sell every open position now\n"
+        "/resume — clear a tripped circuit breaker, re-enable BUYs\n"
+        "/startengine — launch the trading engine if it's stopped\n"
+        "/shutdown — gracefully stop the trading engine\n"
+        "/help — this message"
+    )
+
+
 # ── Dispatch ───────────────────────────────────────────────────────────────────
 
 _COMMANDS = {
-    "/liquidate": _handle_liquidate,
-    "/state":     _handle_state,
-    "/resume":    _handle_resume,
+    "/liquidate":   _handle_liquidate,
+    "/state":       _handle_state,
+    "/resume":      _handle_resume,
+    "/pnl":         _handle_pnl,
+    "/startengine": _handle_startengine,
+    "/shutdown":    _handle_shutdown,
+    "/help":        _handle_help,
 }
 
 

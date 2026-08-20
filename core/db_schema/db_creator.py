@@ -51,9 +51,15 @@ def init_db():
             price TEXT,
             marketcap TEXT,
             liquidity TEXT,
-            fdv TEXT
+            fdv TEXT,
+            last_seen_at TIMESTAMP
         )
     """)
+    try:
+        cur.execute("ALTER TABLE supported_tokens ADD COLUMN last_seen_at TIMESTAMP")
+        conn.commit()
+    except Exception:
+        pass
 
     # -----------------------
     # Already fetched pairs
@@ -269,6 +275,34 @@ def init_db():
             halted          INTEGER NOT NULL DEFAULT 0,
             tripped_at      TIMESTAMP,
             tripped_reason  TEXT
+        )
+    """)
+
+    # -----------------------
+    # Per-token realized P&L log (one row per confirmed SELL)
+    # -----------------------
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS trade_pnl_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            contract        TEXT NOT NULL,
+            symbol          TEXT,
+            usdc_spent      REAL NOT NULL DEFAULT 0,
+            usdc_gained     REAL NOT NULL DEFAULT 0,
+            realized_pnl    REAL NOT NULL DEFAULT 0,
+            exit_reason     TEXT,
+            closed_at       TIMESTAMP NOT NULL
+        )
+    """)
+
+    # -----------------------
+    # Session baseline (single row, id=1) -- wallet value when this
+    # session's main.py last started, for /pnl "since we started" math
+    # -----------------------
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS session_baseline (
+            id              INTEGER PRIMARY KEY CHECK (id = 1),
+            started_at      TIMESTAMP NOT NULL,
+            start_usd       REAL NOT NULL
         )
     """)
 
