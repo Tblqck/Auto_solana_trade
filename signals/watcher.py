@@ -94,6 +94,30 @@ def start_pair_discovery_background(interval_seconds=7200, quiet=True):
     print(f"[Watcher] Pair discovery background thread started (every {interval_seconds}s)")
 
 
+def start_watchlist_prune_background(interval_seconds=86400, quiet=True):
+    """Daily prune of stale/illiquid tokens from supported_tokens. Never
+    touches an open position or ohlc_data history — see data/watchlist_prune.py."""
+    def _loop():
+        while True:
+            try:
+                from data.watchlist_prune import prune_watchlist
+                if quiet:
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        stats = prune_watchlist()
+                else:
+                    print("[Prune] Run triggered")
+                    stats = prune_watchlist()
+                if stats and stats.get("pruned"):
+                    print(f"[Prune] Removed {stats['pruned']} stale/illiquid token(s)")
+            except Exception as e:
+                print(f"[Prune] Background error: {e}")
+            time.sleep(interval_seconds)
+
+    thread = threading.Thread(target=_loop, daemon=True, name="watchlist-prune")
+    thread.start()
+    print(f"[Watcher] Watchlist prune background thread started (every {interval_seconds}s)")
+
+
 def _check_sol_balance():
     """
     Check SOL USD value every SOL_CHECK_INTERVAL_S seconds.
@@ -158,6 +182,7 @@ def watcher(interval=30):
     set_module_status(WATCHER_NAME, "ON")
     start_dataloop_background(interval_seconds=60, quiet=True)
     start_pair_discovery_background(interval_seconds=7200, quiet=True)
+    start_watchlist_prune_background(interval_seconds=86400, quiet=True)
 
     _REPORT_INTERVAL = 3600  # 1 hour
     last_report_ts   = time.time()
