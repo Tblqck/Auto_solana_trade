@@ -203,6 +203,12 @@ if __name__ == "__main__":
     set_session_baseline()
 
     try:
+        from sync.supabase_bridge import set_engine_status
+        set_engine_status("running")
+    except Exception as e:
+        print(f"[Main] engine_status push failed (non-fatal): {e}")
+
+    try:
         from notify.telegram import send as tg_send
         tg_send("<b>sol_trade started</b>\nPreflight passed. System initialising...")
     except Exception:
@@ -243,6 +249,12 @@ if __name__ == "__main__":
         if watcher_proc.poll() is None:
             watcher_proc.terminate()
         stop_reports.set()
+
+    try:
+        from sync.supabase_bridge import set_engine_status
+        set_engine_status("stopped")
+    except Exception as e:
+        print(f"[Main] engine_status push failed (non-fatal): {e}")
 
     try:
         from notify.telegram import send as tg_send

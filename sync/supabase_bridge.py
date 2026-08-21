@@ -92,6 +92,23 @@ def push_trade_feed_event(kind: str, market: str, reason: str = None, amount_usd
         print(f"[SupabaseBridge] push_trade_feed_event failed (non-fatal): {e}")
 
 
+def set_engine_status(status: str):
+    """status: 'running' | 'stopped'. Called from main.py at startup and on
+    graceful shutdown so the site's engine-status badge reflects reality
+    instead of a design-preview prop."""
+    try:
+        conn = _connect()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE engine_status SET status=%s, updated_at=now() WHERE id=1",
+            (status,),
+        )
+        conn.commit()
+        print(f"[SupabaseBridge] engine_status -> {status}")
+    except Exception as e:
+        print(f"[SupabaseBridge] set_engine_status failed (non-fatal): {e}")
+
+
 def push_nav_snapshot():
     """
     Computes the investor-facing NAV and writes a fresh nav_snapshots row.
