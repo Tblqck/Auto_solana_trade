@@ -182,7 +182,23 @@ def execute_trades_batch(trade_signals: list) -> tuple[list, list]:
                         notify_trade_exit(signal["token_mint"], usdc_gained, usdc_spent, exit_reason)
 
                         from notify.reports import log_trade_pnl
-                        log_trade_pnl(signal["token_mint"], usdc_spent, usdc_gained, exit_reason)
+                        pnl_log_id = log_trade_pnl(signal["token_mint"], usdc_spent, usdc_gained, exit_reason)
+
+                        # House takes 40% of a winning trade's realized profit;
+                        # the site's investor-facing NAV never sees this slice
+                        # (see sync/supabase_bridge.py — RLS keeps it backend-only).
+                        # House fee % is fund_config.house_fee_pct in Supabase (currently
+                        # 0.40); hardcoded here to avoid a network round-trip on every
+                        # trade close. Keep in sync if that config value ever changes.
+                        realized_pnl = usdc_gained - usdc_spent
+                        from sync.supabase_bridge import record_house_fee, push_trade_feed_event
+                        if realized_pnl > 0:
+                            house_cut = realized_pnl * 0.40
+                            record_house_fee(pnl_log_id, house_cut, f"{signal['token_mint'][:12]}... {exit_reason}")
+                        push_trade_feed_event(
+                            "sell", signal["token_mint"][:12] + "...", exit_reason,
+                            amount_usd=usdc_gained, pnl_usd=realized_pnl,
+                        )
                     except Exception:
                         pass
                     for t in wallet.get("tokens", []):
@@ -213,6 +229,16 @@ def execute_trades_batch(trade_signals: list) -> tuple[list, list]:
                 trade_done = True
                 print(f"[Trade] SUCCESS: {sig_type} {signal['token_mint'][:12]}...")
 
+                if sig_type == "BUY":
+                    try:
+                        from sync.supabase_bridge import push_trade_feed_event
+                        push_trade_feed_event(
+                            "buy", signal["token_mint"][:12] + "...",
+                            signal.get("_reason", "SIGNAL"), amount_usd=signal.get("amount", 0.0),
+                        )
+                    except Exception:
+                        pass
+
             except Exception as e:
                 attempt += 1
                 print(f"[Trade] Attempt {attempt}/{MAX_ATTEMPTS} failed: {e}")
@@ -238,6 +264,14 @@ def execute_trades_batch(trade_signals: list) -> tuple[list, list]:
         save_wallet_db(wallet, fees_accum_usd)
     except Exception as e:
         print(f"[Trade] Final snapshot failed: {e}")
+
+    try:
+        from sync.supabase_bridge import record_gas_spend, push_nav_snapshot
+        if fees_accum_usd > 0:
+            record_gas_spend(fees_accum_usd, "batch network/priority fees")
+        push_nav_snapshot()
+    except Exception:
+        pass
 
     print(f"[Trade] Batch done — "
           f"{len(successful_trades)} ok, {len(failed_trades)} failed, "

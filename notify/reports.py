@@ -138,7 +138,9 @@ def notify_trade_exit(token_mint: str, usdc_gained: float, usdc_spent: float = 0
 
 def log_trade_pnl(contract: str, usdc_spent: float, usdc_gained: float, exit_reason: str = None):
     """Persist realized P&L for a confirmed SELL to trade_pnl_log — powers /pnl's
-    'which token contributed to growth' breakdown. Best-effort, never raises."""
+    'which token contributed to growth' breakdown. Best-effort, never raises.
+    Returns the inserted row id (or None on failure) so callers can link a
+    house-fee ledger entry to the exact trade it came from."""
     try:
         from core.db_utils import get_db_connection
         conn = get_db_connection()
@@ -153,10 +155,13 @@ def log_trade_pnl(contract: str, usdc_spent: float, usdc_gained: float, exit_rea
             contract, symbol, usdc_spent, usdc_gained, usdc_gained - usdc_spent,
             exit_reason, datetime.now(timezone.utc).isoformat(),
         ))
+        row_id = cur.lastrowid
         conn.commit()
         conn.close()
+        return row_id
     except Exception as e:
         print(f"[Notify] log_trade_pnl failed (non-fatal): {e}")
+        return None
 
 
 def notify_sol_low(sol_usd: float):

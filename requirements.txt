@@ -23,6 +23,9 @@ solders
 pyyaml
 python-dotenv
 
+# Supabase (site data bridge)
+psycopg2-binary
+
 # Date parsing
 python-dateutil
 

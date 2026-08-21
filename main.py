@@ -154,6 +154,23 @@ def start_circuit_breaker_monitor(stop_event: threading.Event, interval_seconds:
     return t
 
 
+def start_nav_snapshot_thread(stop_event: threading.Event, interval_seconds: int = 300):
+    """Background thread: pushes a fresh nav_snapshot to Supabase so the site
+    stays current even between trades (deposits, SOL price drift). Trade
+    closes/gas spends also push their own snapshot immediately — see
+    trading/trade_orch_pipeline.py."""
+    def _run():
+        while not stop_event.wait(timeout=interval_seconds):
+            try:
+                from sync.supabase_bridge import push_nav_snapshot
+                push_nav_snapshot()
+            except Exception as e:
+                print(f"[SupabaseBridge] NAV push error (non-fatal): {e}")
+    t = threading.Thread(target=_run, daemon=True, name="nav-snapshot")
+    t.start()
+    return t
+
+
 def wait_for_dataloop_ready(timeout=120):
     db_path = _get_db_path()
     start = time.time()
@@ -197,6 +214,9 @@ if __name__ == "__main__":
 
     start_circuit_breaker_monitor(stop_reports)
     print("[Main] Circuit breaker monitor started.")
+
+    start_nav_snapshot_thread(stop_reports)
+    print("[Main] NAV snapshot thread started.")
 
     # Telegram command listener now runs in scripts/telegram_supervisor.py —
     # a separate always-on process, so /startengine still works even when
