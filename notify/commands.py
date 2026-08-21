@@ -270,6 +270,8 @@ def _poll_loop():
                 text    = msg.get("text", "")
                 if chat_id != _CHAT_ID or not text:
                     continue
+                cmd_word = text.strip().split()[0] if text.strip() else ""
+                print(f"[Commands] Received {cmd_word!r} from chat {chat_id}")
                 reply = _dispatch(text)
                 if reply:
                     send(reply)
