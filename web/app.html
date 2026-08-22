@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
+<link rel="icon" type="image/png" href="assets/logo.png">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14612,15 +14613,15 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;heigh
   <div style="display:grid;grid-template-columns:{{ heroCols }};gap:32px;padding:{{ heroPad }};align-items:center;max-width:1440px;margin:0 auto">
     <div style="display:flex;flex-direction:column;gap:20px;order:{{ heroTextOrder }}">
       <sc-if value="{{ running }}" hint-placeholder-val="{{ true }}">
-        <div style="display:flex;align-items:center;gap:8px">
+        <div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px 8px 12px;border-radius:500px;background:rgba(100,231,154,.12);border:1px solid rgba(100,231,154,.35);align-self:flex-start">
           <span style="width:8px;height:8px;border-radius:5px;background:#64e79a;animation:solpulse 2s ease-in-out infinite;display:block;flex-shrink:0"></span>
-          <span style="font-family:'Inter',sans-serif;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#64e79a">Engine active — 24/7 on Solana</span>
+          <span style="font-family:'Inter',sans-serif;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#64e79a">Engine active — 24/7 on Solana</span>
         </div>
       </sc-if>
       <sc-if value="{{ halted }}">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="width:8px;height:8px;border-radius:5px;background:#ef4444;display:block;flex-shrink:0"></span>
-          <span style="font-family:'Inter',sans-serif;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#ef4444">Engine paused — capital in USDC</span>
+        <div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px 8px 12px;border-radius:500px;background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.4);align-self:flex-start">
+          <span style="width:8px;height:8px;border-radius:5px;background:#ef4444;animation:solpulse 1.4s ease-in-out infinite;display:block;flex-shrink:0"></span>
+          <span style="font-family:'Inter',sans-serif;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#ef4444">Engine paused — capital in USDC</span>
         </div>
       </sc-if>
       <h1 style="margin:0;font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:{{ h1Size }};line-height:1.1;letter-spacing:-.02em;color:#ffffff;text-wrap:pretty">One pool. One share price. Trading every hour of the day.</h1>
