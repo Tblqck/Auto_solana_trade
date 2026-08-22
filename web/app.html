@@ -14643,17 +14643,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;heigh
         <div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Share price</div>
         <div style="display:flex;align-items:baseline;gap:8px;padding-top:5px">
           <span style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#ffffff">{{ sharePriceLabel }}</span>
-          <span style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:14px;color:#64e79a">+38.42%</span>
+          <span style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:14px;color:{{ sinceLaunchColor }}">{{ sinceLaunchLabel }}</span>
         </div>
       </div>
     </div>
   </div>
 
   <div style="display:grid;grid-template-columns:{{ statCols }};gap:1px;background:rgba(136,190,255,.14);border-top:1px solid rgba(136,190,255,.14);border-bottom:1px solid rgba(136,190,255,.14)">
-    <div style="background:#061535;padding:{{ cellPad }}"><div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Pool NAV</div><div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#ffffff;padding-top:6px">$412,860</div></div>
-    <div style="background:#061535;padding:{{ cellPad }}"><div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Since launch</div><div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#64e79a;padding-top:6px">+38.42%</div></div>
-    <div style="background:#061535;padding:{{ cellPad }}"><div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Trades</div><div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#ffffff;padding-top:6px">1,284</div></div>
-    <div style="background:#061535;padding:{{ cellPad }}"><div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Max drawdown</div><div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#ffffff;padding-top:6px">−8.7%</div></div>
+    <div style="background:#061535;padding:{{ cellPad }}"><div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Pool NAV</div><div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#ffffff;padding-top:6px">{{ poolNavLabel }}</div></div>
+    <div style="background:#061535;padding:{{ cellPad }}"><div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Since launch</div><div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#64e79a;padding-top:6px">{{ sinceLaunchLabel }}</div></div>
+    <div style="background:#061535;padding:{{ cellPad }}"><div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Trades</div><div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#ffffff;padding-top:6px">{{ tradeCount }}</div></div>
+    <div style="background:#061535;padding:{{ cellPad }}"><div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Max drawdown</div><div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#ffffff;padding-top:6px">{{ maxDrawdownLabel }}</div></div>
   </div>
 
   <div style="max-width:1440px;margin:0 auto;padding:{{ sectionPad }}">
@@ -14802,7 +14802,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;heigh
     <div style="display:flex;align-items:center;gap:8px;padding-top:10px;flex-wrap:wrap">
       <span style="font-family:'Inter',sans-serif;font-size:13px;color:#96a7b8">Share price now</span>
       <span style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:16px;color:#ffffff">{{ sharePriceLabel }}</span>
-      <span style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:13px;color:#64e79a">+1.16%</span>
+      <span style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:13px;color:{{ change24hColor }}">{{ change24hLabel }}</span>
     </div>
     <div style="display:flex;flex-direction:column;gap:14px;padding-top:20px">
       <div><div style="font-family:'Instrument Sans',sans-serif;font-weight:500;font-size:15px;color:#ffffff;padding-bottom:7px">Email</div><input value="{{ email }}" sc-camel-on-change="{{ setEmail }}" placeholder="you@wallet.io" style="width:100%;box-sizing:border-box;border-radius:8px;background:#04102a;border:1px solid rgba(136,190,255,.2);padding:15px 16px;font-family:'Inter',sans-serif;color:#ffffff;outline:none" style-focus="border-color:#14b8a6"></div>
@@ -14857,7 +14857,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;heigh
     <div style="border-radius:13px;background:#0b1f4d;border:1px solid rgba(136,190,255,.14);padding:18px 20px">
       <div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Share price</div>
       <div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#ffffff;padding-top:8px">{{ sharePriceLabel }}</div>
-      <div style="font-family:'Inter',sans-serif;font-size:12.5px;color:#64e79a;padding-top:4px">+1.16% 24h</div>
+      <div style="font-family:'Inter',sans-serif;font-size:12.5px;color:{{ change24hColor }};padding-top:4px">{{ change24hLabel }} 24h</div>
     </div>
     <div style="border-radius:13px;background:#0b1f4d;border:1px solid rgba(136,190,255,.14);padding:18px 20px">
       <div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Today</div>
@@ -15029,8 +15029,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;heigh
   <div style="display:grid;grid-template-columns:{{ statCols }};gap:12px;padding-top:8px">
     <div style="border-radius:13px;background:#0b1f4d;border:1px solid rgba(136,190,255,.14);padding:18px 20px"><div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Return</div><div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#64e79a;padding-top:8px">{{ poolDelta }}</div></div>
     <div style="border-radius:13px;background:#0b1f4d;border:1px solid rgba(136,190,255,.14);padding:18px 20px"><div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Trades</div><div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#ffffff;padding-top:8px">{{ tradeCount }}</div></div>
-    <div style="border-radius:13px;background:#0b1f4d;border:1px solid rgba(136,190,255,.14);padding:18px 20px"><div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Win rate</div><div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#64e79a;padding-top:8px">61.4%</div></div>
-    <div style="border-radius:13px;background:#0b1f4d;border:1px solid rgba(136,190,255,.14);padding:18px 20px"><div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Max drawdown</div><div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#ef4444;padding-top:8px">−8.7%</div></div>
+    <div style="border-radius:13px;background:#0b1f4d;border:1px solid rgba(136,190,255,.14);padding:18px 20px"><div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Win rate</div><div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#64e79a;padding-top:8px">{{ winRateLabel }}</div></div>
+    <div style="border-radius:13px;background:#0b1f4d;border:1px solid rgba(136,190,255,.14);padding:18px 20px"><div style="font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#96a7b8">Max drawdown</div><div style="font-family:'Ubuntu',sans-serif;font-weight:700;font-size:{{ statNum }};color:#ef4444;padding-top:8px">{{ maxDrawdownLabel }}</div></div>
   </div>
 
   <div style="display:grid;grid-template-columns:{{ perfCols }};gap:12px;padding-top:12px;align-items:start">
@@ -15417,6 +15417,7 @@ class Component extends DCLogic {
     pct: 25, withdrawDone: false,
     balance: 0, shares: 0, totalDeposited: 0, myLedger: [], feedData: [],
     sharePrice: 1.00, poolTotalUsd: 0, poolTotalShares: 0, engineStatus: 'stopped',
+    maxDrawdownPct: 0, baseline24h: 1, baseline7d: 1, baseline30d: 1, tradeCountReal: 0, winRatePct: 0,
     wallet: '',
     notif: { trades: true, weekly: true, halt: true },
     toast: '', authBusy: false, w: typeof window === 'undefined' ? 1440 : window.innerWidth
@@ -15460,6 +15461,37 @@ class Component extends DCLogic {
         tone: row.kind === 'buy' ? 'n' : (row.kind === 'halt' ? 'b' : (Number(row.pnl_usd) >= 0 ? 'g' : 'b')),
       })) });
     }
+
+    // Real max drawdown + period-return baselines, computed from actual
+    // nav_snapshots history (not a made-up target). Young pools just fall
+    // back to the earliest snapshot available for a window that hasn't
+    // happened yet -- honest, not fabricated.
+    const { data: allSnaps } = await sb.from('nav_snapshots').select('share_price, taken_at').order('taken_at', { ascending: true });
+    if (allSnaps && allSnaps.length) {
+      const prices = allSnaps.map((s) => Number(s.share_price));
+      const peak = Math.max(1.0, ...prices);
+      const current = prices[prices.length - 1];
+      const maxDrawdownPct = peak > 0 ? ((peak - current) / peak) * 100 : 0;
+      const nowMs = Date.now();
+      const baselineFor = (daysAgo) => {
+        const cutoff = nowMs - daysAgo * 86400000;
+        const older = allSnaps.filter((s) => new Date(s.taken_at).getTime() <= cutoff);
+        return older.length ? Number(older[older.length - 1].share_price) : Number(allSnaps[0].share_price);
+      };
+      this.setState({
+        maxDrawdownPct,
+        baseline24h: baselineFor(1), baseline7d: baselineFor(7), baseline30d: baselineFor(30),
+      });
+    }
+
+    // Real trade count + win rate from trade_feed (win = a SELL with pnl_usd > 0)
+    const { count: tradeTotal } = await sb.from('trade_feed').select('*', { count: 'exact', head: true });
+    const { count: sellCount } = await sb.from('trade_feed').select('*', { count: 'exact', head: true }).eq('kind', 'sell');
+    const { count: winCount } = await sb.from('trade_feed').select('*', { count: 'exact', head: true }).eq('kind', 'sell').gt('pnl_usd', 0);
+    this.setState({
+      tradeCountReal: tradeTotal || 0,
+      winRatePct: sellCount ? (winCount / sellCount) * 100 : 0,
+    });
   }
 
   async loadMyAccount(userId, email) {
@@ -15612,15 +15644,31 @@ class Component extends DCLogic {
     const pnl = st.balance - st.totalDeposited;
     const inApp = st.loggedIn;
 
+    // Real period return: % change in share price since the baseline for
+    // whichever tab (24H/7D/30D) is selected, or true since-launch ($1.00
+    // inception) for ALL -- from actual nav_snapshots history, not a target.
+    const periodBaseline = { '24H': st.baseline24h, '7D': st.baseline7d, '30D': st.baseline30d, 'ALL': 1.0 }[st.period] ?? 1.0;
+    const periodReturnPct = periodBaseline > 0 ? ((st.sharePrice - periodBaseline) / periodBaseline) * 100 : 0;
+    const sinceLaunchPct = (st.sharePrice - 1.0) * 100;
+    const change24hPct = st.baseline24h > 0 ? ((st.sharePrice - st.baseline24h) / st.baseline24h) * 100 : 0;
+    const fmtPct = (n) => (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(2) + '%';
+
     return {
       to, publicNav, appNav, tabBar, periods, modes, filters, positions: POSITIONS, tokens: TOKENS,
       feedRows: rows, homeFeed, steps: STEPS.map((s) => ({ n: s.n, title: s.title, body: s.body, go: () => this.nav(s.route) })),
       howSteps: HOW, risks: RISKS,
       axis: period.axis.map((a) => ({ label: a })),
-      periodCaption: period.caption, tradeCount: period.trades,
+      periodCaption: period.caption, tradeCount: num(st.tradeCountReal, 0),
       poolLine: ser.line, poolArea: ser.area, ddLine: dd.line, ddArea: dd.area,
-      poolDelta: '+' + (period.target * 100).toFixed(2) + '%',
-      chartDelta: '+' + (period.target * 100).toFixed(2) + '%',
+      poolDelta: fmtPct(periodReturnPct),
+      chartDelta: fmtPct(periodReturnPct),
+      poolNavLabel: money(st.poolTotalUsd),
+      sinceLaunchLabel: fmtPct(sinceLaunchPct),
+      sinceLaunchColor: sinceLaunchPct >= 0 ? '#64e79a' : '#ef4444',
+      change24hLabel: fmtPct(change24hPct),
+      change24hColor: change24hPct >= 0 ? '#64e79a' : '#ef4444',
+      maxDrawdownLabel: '−' + Math.abs(st.maxDrawdownPct).toFixed(1) + '%',
+      winRateLabel: st.winRatePct.toFixed(1) + '%',
       chartTitle: st.mode === 'mine' ? 'Your portfolio' : 'Pool share price',
       chartValue: st.mode === 'mine' ? money(st.balance) : ('$' + st.sharePrice.toFixed(4)),
       sharePriceLabel: '$' + st.sharePrice.toFixed(4),
