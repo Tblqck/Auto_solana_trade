@@ -14611,10 +14611,18 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;heigh
 <div style="animation:solfade .25s ease">
   <div style="display:grid;grid-template-columns:{{ heroCols }};gap:32px;padding:{{ heroPad }};align-items:center;max-width:1440px;margin:0 auto">
     <div style="display:flex;flex-direction:column;gap:20px;order:{{ heroTextOrder }}">
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="width:8px;height:8px;border-radius:5px;background:#64e79a;animation:solpulse 2s ease-in-out infinite;display:block;flex-shrink:0"></span>
-        <span style="font-family:'Inter',sans-serif;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#64e79a">Engine active — 24/7 on Solana</span>
-      </div>
+      <sc-if value="{{ running }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:8px;height:8px;border-radius:5px;background:#64e79a;animation:solpulse 2s ease-in-out infinite;display:block;flex-shrink:0"></span>
+          <span style="font-family:'Inter',sans-serif;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#64e79a">Engine active — 24/7 on Solana</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ halted }}">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:8px;height:8px;border-radius:5px;background:#ef4444;display:block;flex-shrink:0"></span>
+          <span style="font-family:'Inter',sans-serif;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#ef4444">Engine paused — capital in USDC</span>
+        </div>
+      </sc-if>
       <h1 style="margin:0;font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:{{ h1Size }};line-height:1.1;letter-spacing:-.02em;color:#ffffff;text-wrap:pretty">One pool. One share price. Trading every hour of the day.</h1>
       <p style="margin:0;max-width:520px;font-family:'Inter',sans-serif;font-size:{{ bodySize }};line-height:1.6;color:#96a7b8">Deposit USDC, hold shares in the pool, watch every trade the engine makes. Withdraw whenever you want — no lock-up, no notice period.</p>
       <div style="display:flex;flex-direction:{{ ctaDir }};align-items:{{ ctaAlign }};gap:12px;padding-top:4px">
