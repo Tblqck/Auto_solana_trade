@@ -5,6 +5,18 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Ubuntu:wght@400;500;700&display=swap" rel="stylesheet">
+<script>
+// The DCLogic runtime's boot() does `if (!window.__resources) fetch(location.href)...`
+// as a fallback to re-fetch+reparse the page as a raw .dc.html fragment -- meant for
+// the design tool's own hosting, which pre-populates window.__resources so this never
+// fires. We don't have that, so on a real HTTP(S) origin this fetch actually succeeds
+// (it fails silently and harmlessly under file://, which is why this only breaks when
+// deployed), fetches the full assembled page, mis-parses it, and overwrites the
+// already-correctly-booted component with garbage a moment after first paint. Setting
+// this to a truthy value skips that branch entirely -- parseDcDocument(doc) at boot
+// already has everything needed from the live DOM.
+window.__resources = {};
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 /**
